@@ -1,9 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useToast } from "@/components/ToastProvider";
 
-const API_URL = "https://kindora-api-vb9y.onrender.com/api/events";
+const API_URL = `${process.env.NEXT_PUBLIC_API_URL || "https://kindora-api-vb9y.onrender.com"}/api/events`;
 
 const initialForm = {
   title: "",
@@ -15,10 +17,35 @@ const initialForm = {
 };
 
 export default function CreateEvent() {
+  const router = useRouter();
+  const { success, error, warning } = useToast();
+
   const [form, setForm] = useState(initialForm);
   const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
+  const [checkingAuth, setCheckingAuth] = useState(true);
+  const [token, setToken] = useState("");
+
+  // ==========================================
+  // AUTHENTICATION GUARD
+  // ==========================================
+
+  useEffect(() => {
+    const storedToken = sessionStorage.getItem("kindora_token");
+
+    if (!storedToken) {
+      warning("Please login first to create an event.");
+
+      router.replace("/login?redirect=/create-event");
+      return;
+    }
+
+    setToken(storedToken);
+    setCheckingAuth(false);
+  }, [router, warning]);
+
+  // ==========================================
+  // FORM CHANGE
+  // ==========================================
 
   function handleChange(e) {
     const { name, value } = e.target;
@@ -29,40 +56,71 @@ export default function CreateEvent() {
     }));
   }
 
+  // ==========================================
+  // CREATE EVENT
+  // ==========================================
+
   async function handleSubmit(e) {
     e.preventDefault();
 
+    if (!token) {
+      warning("Please login first to create an event.");
+      router.replace("/login?redirect=/create-event");
+      return;
+    }
+
     setLoading(true);
-    setMessage("");
-    setError("");
 
     try {
       const response = await fetch(API_URL, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           ...form,
           title: form.title.trim(),
+          type: form.type.trim(),
           location: form.location.trim(),
+          date: form.date,
           image: form.image.trim(),
           description: form.description.trim(),
         }),
       });
 
-      const data = await response.json();
+      const data = await response.json().catch(() => ({}));
+
+      if (response.status === 401 || response.status === 403) {
+        sessionStorage.removeItem("kindora_token");
+        sessionStorage.removeItem("kindora_user");
+
+        window.dispatchEvent(new Event("kindora-auth-change"));
+
+        error("Your session has expired. Please login again.");
+
+        router.replace("/login?redirect=/create-event");
+        return;
+      }
 
       if (!response.ok || !data.success) {
         throw new Error(data.message || "Failed to create event.");
       }
 
-      setMessage("Event created successfully!");
       setForm(initialForm);
+
+      success("Event created successfully!");
+
+      // Home page will fetch the latest events.
+      setTimeout(() => {
+        router.push("/");
+      }, 900);
     } catch (err) {
-      setError(
+      console.error("Create event error:", err);
+
+      error(
         err.message === "Failed to fetch"
-          ? "Cannot connect to the server. Make sure your backend is running on port 5000."
+          ? "Cannot connect to the server. Please try again."
           : err.message || "Something went wrong.",
       );
     } finally {
@@ -70,9 +128,31 @@ export default function CreateEvent() {
     }
   }
 
+  // ==========================================
+  // AUTH CHECK SCREEN
+  // ==========================================
+
+  if (checkingAuth) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-[#f8f8f5]">
+        <div className="text-center">
+          <div className="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-4 border-[#52764b] border-t-transparent" />
+          <p className="text-sm font-medium text-gray-600">
+            Checking your account...
+          </p>
+        </div>
+      </main>
+    );
+  }
+
+  // ==========================================
+  // MAIN PAGE
+  // ==========================================
+
   return (
     <main className="min-h-screen bg-[#f8f8f5] text-[#20251f]">
       {/* Navigation */}
+
       <header className="border-b border-gray-200 bg-white">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-5 py-5 sm:px-6">
           <Link
@@ -92,6 +172,7 @@ export default function CreateEvent() {
       </header>
 
       {/* Page Content */}
+
       <section className="px-4 py-12 sm:px-6 sm:py-16">
         <div className="mx-auto max-w-3xl">
           <Link
@@ -118,38 +199,11 @@ export default function CreateEvent() {
           </div>
 
           {/* Event Form */}
+
           <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm sm:p-8">
-            {message && (
-              <div
-                role="status"
-                className="mb-6 rounded-xl border border-green-200 bg-green-50 p-4 text-sm text-green-800"
-              >
-                <p className="font-semibold">{message}</p>
-
-                <p className="mt-1">
-                  Your event has been saved to the database.
-                </p>
-
-                <Link
-                  href="/"
-                  className="mt-3 inline-block font-semibold underline"
-                >
-                  Go to Home and view events
-                </Link>
-              </div>
-            )}
-
-            {error && (
-              <div
-                role="alert"
-                className="mb-6 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700"
-              >
-                {error}
-              </div>
-            )}
-
             <form onSubmit={handleSubmit} className="space-y-6">
               {/* Event Title */}
+
               <div>
                 <label
                   htmlFor="title"
@@ -172,6 +226,7 @@ export default function CreateEvent() {
               </div>
 
               {/* Event Type and Date */}
+
               <div className="grid gap-6 sm:grid-cols-2">
                 <div>
                   <label
@@ -219,6 +274,7 @@ export default function CreateEvent() {
               </div>
 
               {/* Location */}
+
               <div>
                 <label
                   htmlFor="location"
@@ -241,6 +297,7 @@ export default function CreateEvent() {
               </div>
 
               {/* Image URL */}
+
               <div>
                 <label
                   htmlFor="image"
@@ -265,6 +322,7 @@ export default function CreateEvent() {
               </div>
 
               {/* Description */}
+
               <div>
                 <label
                   htmlFor="description"
@@ -286,6 +344,7 @@ export default function CreateEvent() {
               </div>
 
               {/* Submit Button */}
+
               <button
                 type="submit"
                 disabled={loading}
@@ -303,6 +362,7 @@ export default function CreateEvent() {
       </section>
 
       {/* Footer */}
+
       <footer className="border-t border-gray-200 bg-white px-4 py-6 text-center text-sm text-gray-500">
         © {new Date().getFullYear()} Kindora. Making a difference together.
       </footer>
