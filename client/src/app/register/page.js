@@ -4,6 +4,9 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
+// Deployed Render Backend API
+const API_URL = "https://kindora-api-vb9y.onrender.com/api/auth/register";
+
 export default function RegisterPage() {
   const router = useRouter();
 
@@ -18,11 +21,15 @@ export default function RegisterPage() {
   const [success, setSuccess] = useState("");
 
   function handleChange(e) {
-    setForm({ ...form, [e.target.name]: e.target.value });
+    setForm({
+      ...form,
+      [e.target.name]: e.target.value,
+    });
   }
 
   async function handleSubmit(e) {
     e.preventDefault();
+
     setError("");
     setSuccess("");
 
@@ -34,9 +41,11 @@ export default function RegisterPage() {
     setLoading(true);
 
     try {
-      const response = await fetch("http://localhost:5000/api/auth/register", {
+      const response = await fetch(API_URL, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify(form),
       });
 
@@ -46,17 +55,24 @@ export default function RegisterPage() {
         throw new Error(data.message || "Registration failed.");
       }
 
-      // Save the authentication token for this browser session.
+      // Save authentication information
       sessionStorage.setItem("kindora_token", data.token);
       sessionStorage.setItem("kindora_user", JSON.stringify(data.user));
 
+      // Notify other components about login
+      window.dispatchEvent(new Event("kindora-auth-change"));
+
       setSuccess("Account created successfully! Redirecting...");
 
-      setTimeout(() => router.push("/"), 1000);
+      setTimeout(() => {
+        router.push("/");
+      }, 1000);
     } catch (err) {
+      console.error("Registration error:", err);
+
       setError(
         err.message === "Failed to fetch"
-          ? "Cannot connect to the server. Please check that the backend is running."
+          ? "Cannot connect to the server. Please try again later."
           : err.message,
       );
     } finally {
@@ -109,6 +125,7 @@ export default function RegisterPage() {
             <label htmlFor="name" className="mb-2 block text-sm font-semibold">
               Full name
             </label>
+
             <input
               id="name"
               name="name"
@@ -128,6 +145,7 @@ export default function RegisterPage() {
             <label htmlFor="email" className="mb-2 block text-sm font-semibold">
               Email address
             </label>
+
             <input
               id="email"
               name="email"
@@ -149,6 +167,7 @@ export default function RegisterPage() {
             >
               Password
             </label>
+
             <input
               id="password"
               name="password"

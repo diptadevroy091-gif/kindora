@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 
-const API_URL = "http://localhost:5000/api/events";
+const API_URL = "https://kindora-api-vb9y.onrender.com/api/events";
 
 const initialForm = {
   title: "",

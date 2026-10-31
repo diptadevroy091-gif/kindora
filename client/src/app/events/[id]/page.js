@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 
-const API_URL = "http://localhost:5000/api/events";
+const API_URL = "https://kindora-api-vb9y.onrender.com/api/events";
 
 export default function EventDetails() {
   const params = useParams();

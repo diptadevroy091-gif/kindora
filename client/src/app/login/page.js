@@ -4,6 +4,8 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
+const API_URL = "https://kindora-api-vb9y.onrender.com/api/auth/login";
+
 export default function LoginPage() {
   const router = useRouter();
 
@@ -16,18 +18,24 @@ export default function LoginPage() {
   const [error, setError] = useState("");
 
   function handleChange(e) {
-    setForm({ ...form, [e.target.name]: e.target.value });
+    setForm({
+      ...form,
+      [e.target.name]: e.target.value,
+    });
   }
 
   async function handleSubmit(e) {
     e.preventDefault();
+
     setError("");
     setLoading(true);
 
     try {
-      const response = await fetch("http://localhost:5000/api/auth/login", {
+      const response = await fetch(API_URL, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify(form),
       });
 
@@ -37,14 +45,21 @@ export default function LoginPage() {
         throw new Error(data.message || "Login failed.");
       }
 
+      // Save login information
       sessionStorage.setItem("kindora_token", data.token);
       sessionStorage.setItem("kindora_user", JSON.stringify(data.user));
 
+      // Notify other components about login
+      window.dispatchEvent(new Event("kindora-auth-change"));
+
+      // Redirect to Home page
       router.push("/");
     } catch (err) {
+      console.error("Login error:", err);
+
       setError(
         err.message === "Failed to fetch"
-          ? "Cannot connect to the server. Please check that the backend is running."
+          ? "Cannot connect to the server. Please try again later."
           : err.message,
       );
     } finally {
@@ -88,6 +103,7 @@ export default function LoginPage() {
             <label htmlFor="email" className="mb-2 block text-sm font-semibold">
               Email address
             </label>
+
             <input
               id="email"
               name="email"
@@ -108,6 +124,7 @@ export default function LoginPage() {
             >
               Password
             </label>
+
             <input
               id="password"
               name="password"

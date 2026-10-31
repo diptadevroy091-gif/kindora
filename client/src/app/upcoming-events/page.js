@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 
-const API_URL = "http://localhost:5000/api/events";
+const API_URL = "https://kindora-api-vb9y.onrender.com/api/events";
 
 export default function UpcomingEvents() {
   const [events, setEvents] = useState([]);
