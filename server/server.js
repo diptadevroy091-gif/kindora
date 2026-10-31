@@ -42,11 +42,11 @@ if (IS_PRODUCTION) {
 }
 
 // ==========================================
-// VALIDATE REQUIRED ENVIRONMENT VARIABLES
+// VALIDATE ENVIRONMENT
 // ==========================================
 
 if (!process.env.OAUTH_SESSION_SECRET?.trim()) {
-  console.error("Missing OAUTH_SESSION_SECRET. Check server/.env");
+  console.error("Missing OAUTH_SESSION_SECRET.");
   process.exit(1);
 }
 
@@ -56,7 +56,7 @@ if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) {
 }
 
 if (!process.env.MONGODB_URI) {
-  console.error("MONGODB_URI is missing from server/.env");
+  console.error("MONGODB_URI is missing.");
   process.exit(1);
 }
 
@@ -76,6 +76,7 @@ app.use(
       if (!origin || allowedOrigins.has(origin)) {
         return callback(null, true);
       }
+
       return callback(new Error("Origin is not allowed by CORS"));
     },
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
@@ -85,7 +86,7 @@ app.use(
 
 app.use(express.json({ limit: "20kb" }));
 
-// IMPORTANT: session middleware must run before OAuth routes.
+// OAuth session middleware
 app.use(
   session({
     name: "kindora.oauth.sid",
@@ -181,10 +182,8 @@ async function findOrCreateOAuthUser({ provider, providerId, email, name }) {
   if (linkedUser) return linkedUser;
 
   const cleanEmail = email.trim().toLowerCase();
-
   const existingUser = await users.findOne({ email: cleanEmail });
 
-  // Do not silently link separate login methods by email alone.
   if (existingUser) {
     throw new Error(
       "An account already uses this email. Sign in using your existing method.",
@@ -219,6 +218,7 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
         clientID: process.env.GOOGLE_CLIENT_ID,
         clientSecret: process.env.GOOGLE_CLIENT_SECRET,
         callbackURL: `${API_BASE_URL}/api/auth/google/callback`,
+        scope: ["profile", "email"],
         state: true,
       },
       async (accessToken, refreshToken, profile, done) => {
@@ -499,9 +499,12 @@ function oauthStart(provider) {
         .send(`${provider} OAuth is not configured on the server.`);
     }
 
-    passport.authenticate(provider, {
+    const options = {
       session: false,
-    })(req, res, next);
+      scope: provider === "google" ? ["profile", "email"] : ["user:email"],
+    };
+
+    passport.authenticate(provider, options)(req, res, next);
   };
 }
 
