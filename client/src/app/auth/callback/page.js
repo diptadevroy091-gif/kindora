@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 const API_BASE =
@@ -27,7 +27,7 @@ function CallbackContent() {
         return;
       }
 
-      // Account linking does not need a new login token.
+      // Google account linking does not require a new login token.
       if (linked === "google") {
         const existingToken = sessionStorage.getItem("kindora_token");
 
@@ -42,9 +42,7 @@ function CallbackContent() {
         setStatus("Google account linked successfully!");
 
         window.setTimeout(() => {
-          if (!cancelled) {
-            router.replace("/");
-          }
+          if (!cancelled) router.replace("/");
         }, 1500);
 
         return;
@@ -75,6 +73,8 @@ function CallbackContent() {
           );
         }
 
+        if (cancelled) return;
+
         sessionStorage.setItem("kindora_token", data.token);
 
         if (data.user) {
@@ -84,10 +84,7 @@ function CallbackContent() {
         window.dispatchEvent(new Event("kindora-auth-change"));
 
         setStatus("Sign-in successful! Redirecting...");
-
-        if (!cancelled) {
-          router.replace("/");
-        }
+        router.replace("/");
       } catch (err) {
         if (!cancelled) {
           setStatus("Sign-in unsuccessful");
@@ -133,6 +130,21 @@ function CallbackContent() {
   );
 }
 
+function CallbackLoading() {
+  return (
+    <main className="flex min-h-screen items-center justify-center bg-gray-50 px-4">
+      <div className="text-center">
+        <h1 className="text-2xl font-bold text-emerald-700">Kindora</h1>
+        <p className="mt-4 text-gray-700">Preparing secure sign-in...</p>
+      </div>
+    </main>
+  );
+}
+
 export default function AuthCallbackPage() {
-  return <CallbackContent />;
+  return (
+    <Suspense fallback={<CallbackLoading />}>
+      <CallbackContent />
+    </Suspense>
+  );
 }
