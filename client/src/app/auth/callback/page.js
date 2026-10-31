@@ -1,7 +1,8 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useToast } from "@/components/ToastProvider";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_URL || "https://kindora-api-vb9y.onrender.com";
@@ -9,25 +10,52 @@ const API_BASE =
 function CallbackContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { warning, error: showError, success } = useToast();
 
   const [status, setStatus] = useState("Checking your account...");
   const [error, setError] = useState("");
 
+  const handledRef = useRef(false);
+
   useEffect(() => {
+    if (handledRef.current) return;
+    handledRef.current = true;
+
     let cancelled = false;
+    let redirectTimer;
 
     async function handleCallback() {
       const linked = searchParams.get("linked");
       const code = searchParams.get("code");
       const oauthError = searchParams.get("error");
 
-      if (oauthError) {
-        setError("Google/GitHub authorization was cancelled or failed.");
-        setStatus("Sign-in unsuccessful");
+      // Existing email/password account already exists.
+      if (oauthError === "account_exists_sign_in_and_link") {
+        setStatus("Account already exists");
+
+        warning(
+          "Account Already Exists! Please sign in using your email and password.",
+          4000,
+        );
+
+        redirectTimer = window.setTimeout(() => {
+          if (!cancelled) {
+            router.replace("/login");
+          }
+        }, 2000);
+
         return;
       }
 
-      // Google account linking does not require a new login token.
+      // Other OAuth errors.
+      if (oauthError) {
+        setError("Google/GitHub authorization was cancelled or failed.");
+        setStatus("Sign-in unsuccessful");
+        showError("Authorization failed. Please try signing in again.", 4000);
+        return;
+      }
+
+      // Google account linking.
       if (linked === "google") {
         const existingToken = sessionStorage.getItem("kindora_token");
 
@@ -41,7 +69,9 @@ function CallbackContent() {
 
         setStatus("Google account linked successfully!");
 
-        window.setTimeout(() => {
+        success("Google account linked successfully!", 3000);
+
+        redirectTimer = window.setTimeout(() => {
           if (!cancelled) router.replace("/");
         }, 1500);
 
@@ -51,6 +81,7 @@ function CallbackContent() {
       if (!code) {
         setError("No authorization code was returned by the provider.");
         setStatus("Sign-in unsuccessful");
+        showError("No authorization code was returned.", 4000);
         return;
       }
 
@@ -68,6 +99,24 @@ function CallbackContent() {
         const data = await response.json();
 
         if (!response.ok || !data.token) {
+          if (
+            data.error === "account_exists_sign_in_and_link" ||
+            data.code === "account_exists_sign_in_and_link"
+          ) {
+            setStatus("Account already exists");
+
+            warning(
+              "Account Already Exists! Please sign in using your email and password.",
+              4000,
+            );
+
+            redirectTimer = window.setTimeout(() => {
+              if (!cancelled) router.replace("/login");
+            }, 2000);
+
+            return;
+          }
+
           throw new Error(
             data.message || data.error || "Could not complete OAuth sign-in.",
           );
@@ -84,11 +133,15 @@ function CallbackContent() {
         window.dispatchEvent(new Event("kindora-auth-change"));
 
         setStatus("Sign-in successful! Redirecting...");
+
+        success("Welcome to Kindora!", 2000);
+
         router.replace("/");
       } catch (err) {
         if (!cancelled) {
           setStatus("Sign-in unsuccessful");
           setError(err.message || "An unexpected error occurred.");
+          showError(err.message || "Sign-in failed.", 4000);
         }
       }
     }
@@ -97,8 +150,12 @@ function CallbackContent() {
 
     return () => {
       cancelled = true;
+
+      if (redirectTimer) {
+        window.clearTimeout(redirectTimer);
+      }
     };
-  }, [router, searchParams]);
+  }, [router, searchParams, warning, showError, success]);
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-gray-50 px-4">
