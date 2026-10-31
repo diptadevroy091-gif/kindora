@@ -30,6 +30,10 @@ const API_BASE_URL = (
 const PRODUCTION = process.env.NODE_ENV === "production";
 const LINK_TICKET_TTL_MS = 2 * 60 * 1000;
 
+// ==========================================
+// ENVIRONMENT VALIDATION
+// ==========================================
+
 if (!process.env.MONGODB_URI) {
   throw new Error("MONGODB_URI is missing");
 }
@@ -48,27 +52,66 @@ if (PRODUCTION) {
   app.set("trust proxy", 1);
 }
 
+// ==========================================
+// CORS CONFIGURATION
+// ==========================================
+
 const allowedOrigins = new Set([
   CLIENT_URL,
+  "https://kindora-lime.vercel.app",
   "http://localhost:3000",
   "http://127.0.0.1:3000",
 ]);
 
-app.use(
-  cors({
-    origin(origin, callback) {
-      if (!origin || allowedOrigins.has(origin)) {
+const corsOptions = {
+  origin(origin, callback) {
+    // Allow requests without an Origin header.
+    if (!origin) {
+      return callback(null, true);
+    }
+
+    // Allow the production frontend and local development.
+    if (allowedOrigins.has(origin)) {
+      return callback(null, true);
+    }
+
+    // Allow HTTPS preview deployments for the Kindora project.
+    try {
+      const url = new URL(origin);
+
+      const isKindoraPreview =
+        url.protocol === "https:" &&
+        url.hostname.startsWith("kindora-") &&
+        url.hostname.endsWith(".vercel.app");
+
+      if (isKindoraPreview) {
         return callback(null, true);
       }
+    } catch {
+      // Invalid origin.
+    }
 
-      return callback(new Error("Origin is not allowed by CORS"));
-    },
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
-  }),
-);
+    console.warn("CORS blocked origin:", origin);
 
+    // Do not throw an error for an unapproved origin.
+    return callback(null, false);
+  },
+
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+
+  allowedHeaders: ["Content-Type", "Authorization"],
+
+  optionsSuccessStatus: 204,
+};
+
+app.use(cors(corsOptions));
+
+// Parse JSON requests.
 app.use(express.json({ limit: "20kb" }));
+
+// ==========================================
+// SESSION CONFIGURATION
+// ==========================================
 
 app.use(
   session({
@@ -86,6 +129,10 @@ app.use(
 );
 
 app.use(passport.initialize());
+
+// ==========================================
+// DATABASE HELPERS
+// ==========================================
 
 let db;
 
@@ -133,7 +180,7 @@ function isConfigured(provider) {
 }
 
 // ==========================================
-// KINDORA JWT AUTHENTICATION
+// JWT AUTHENTICATION
 // ==========================================
 
 async function requireAuth(req, res, next) {
@@ -284,7 +331,7 @@ function startOAuth(provider) {
       return res.redirect(redirectError("oauth_not_configured"));
     }
 
-    // Normal login must never inherit an old account-link session.
+    // Normal login must not inherit an old linking session.
     delete req.session.oauthLinkUserId;
     delete req.session.oauthLinkProvider;
 
@@ -342,12 +389,15 @@ function oauthCallback(provider) {
           const linkUserId = req.session?.oauthLinkUserId;
           const linkProvider = req.session?.oauthLinkProvider;
 
-          // --------------------------------------
-          // LINK MODE
-          // Only link to the signed-in Kindora user.
-          // --------------------------------------
+          // ======================================
+          // ACCOUNT LINKING MODE
+          // ======================================
 
           if (linkUserId && linkProvider === provider) {
+            if (!ObjectId.isValid(linkUserId)) {
+              return res.redirect(redirectError("link_account_not_found"));
+            }
+
             const targetId = new ObjectId(linkUserId);
 
             const targetUser = await users().findOne({
@@ -358,7 +408,6 @@ function oauthCallback(provider) {
               return res.redirect(redirectError("link_account_not_found"));
             }
 
-            // The verified provider email must match the signed-in user.
             if (targetUser.email.toLowerCase() !== identity.email) {
               return res.redirect(redirectError("link_email_mismatch"));
             }
@@ -404,12 +453,9 @@ function oauthCallback(provider) {
             });
           }
 
-          // --------------------------------------
+          // ======================================
           // LOGIN MODE
-          // 1. Existing provider-linked user logs in.
-          // 2. Existing email with no provider link is rejected.
-          // 3. A completely new email can register.
-          // --------------------------------------
+          // ======================================
 
           let user = await users().findOne({
             [providerField]: identity.providerId,
@@ -421,7 +467,6 @@ function oauthCallback(provider) {
             });
 
             if (existingEmail) {
-              // Do not auto-link an email/password account.
               return res.redirect(
                 redirectError("account_exists_sign_in_and_link"),
               );
@@ -469,7 +514,7 @@ function oauthCallback(provider) {
 }
 
 // ==========================================
-// HEALTH
+// HEALTH CHECK
 // ==========================================
 
 app.get("/", (req, res) => {
@@ -576,7 +621,7 @@ app.post("/api/auth/register", async (req, res) => {
 });
 
 // ==========================================
-// EMAIL/PASSWORD LOGIN
+// EMAIL / PASSWORD LOGIN
 // ==========================================
 
 app.post("/api/auth/login", async (req, res) => {
@@ -633,8 +678,6 @@ app.get("/api/auth/github/callback", oauthCallback("github"));
 
 // ==========================================
 // GOOGLE ACCOUNT-LINK TICKET
-// Browser navigation cannot send a Bearer header.
-// First request a short-lived ticket using the JWT.
 // ==========================================
 
 app.post("/api/auth/google/link-ticket", requireAuth, async (req, res) => {
@@ -674,7 +717,10 @@ app.post("/api/auth/google/link-ticket", requireAuth, async (req, res) => {
   }
 });
 
-// Consume the one-time ticket, then begin the Google OAuth flow.
+// ==========================================
+// GOOGLE ACCOUNT-LINK ROUTE
+// ==========================================
+
 app.get("/api/auth/google/link", async (req, res, next) => {
   try {
     const ticket = req.query.ticket;
@@ -724,7 +770,7 @@ app.get("/api/auth/google/link", async (req, res, next) => {
 });
 
 // ==========================================
-// EXCHANGE ONE-TIME OAUTH CODE
+// OAUTH CODE EXCHANGE
 // ==========================================
 
 app.post("/api/auth/oauth/exchange", async (req, res) => {
@@ -757,7 +803,9 @@ app.post("/api/auth/oauth/exchange", async (req, res) => {
         ? record.userId
         : new ObjectId(record.userId);
 
-    const user = await users().findOne({ _id: userId });
+    const user = await users().findOne({
+      _id: userId,
+    });
 
     if (!user) {
       return res.status(401).json({
@@ -782,7 +830,7 @@ app.post("/api/auth/oauth/exchange", async (req, res) => {
 });
 
 // ==========================================
-// EVENTS
+// EVENTS - GET ALL
 // ==========================================
 
 app.get("/api/events", async (req, res) => {
@@ -807,6 +855,10 @@ app.get("/api/events", async (req, res) => {
     });
   }
 });
+
+// ==========================================
+// EVENTS - CREATE
+// ==========================================
 
 app.post("/api/events", async (req, res) => {
   try {
@@ -855,6 +907,10 @@ app.post("/api/events", async (req, res) => {
     });
   }
 });
+
+// ==========================================
+// EVENTS - UPDATE
+// ==========================================
 
 app.put("/api/events/:id", async (req, res) => {
   try {
@@ -920,6 +976,10 @@ app.put("/api/events/:id", async (req, res) => {
   }
 });
 
+// ==========================================
+// EVENTS - DELETE
+// ==========================================
+
 app.delete("/api/events/:id", async (req, res) => {
   try {
     const { id } = req.params;
@@ -957,7 +1017,7 @@ app.delete("/api/events/:id", async (req, res) => {
 });
 
 // ==========================================
-// NEWSLETTER
+// NEWSLETTER SUBSCRIBE
 // ==========================================
 
 app.post("/api/newsletter/subscribe", async (req, res) => {
@@ -998,7 +1058,7 @@ app.post("/api/newsletter/subscribe", async (req, res) => {
 });
 
 // ==========================================
-// ERROR HANDLER
+// GLOBAL ERROR HANDLER
 // ==========================================
 
 app.use((error, req, res, next) => {
@@ -1028,19 +1088,19 @@ async function startServer() {
 
     await db.command({ ping: 1 });
 
-    // User indexes
+    // User indexes.
     await users().createIndex({ email: 1 }, { unique: true });
 
     await users().createIndex({ googleId: 1 }, { unique: true, sparse: true });
 
     await users().createIndex({ githubId: 1 }, { unique: true, sparse: true });
 
-    // Newsletter indexes
+    // Newsletter indexes.
     await db
       .collection("newsletter_subscribers")
       .createIndex({ email: 1 }, { unique: true });
 
-    // One-time OAuth sign-in codes
+    // OAuth sign-in code indexes.
     await db
       .collection("oauth_codes")
       .createIndex({ codeHash: 1 }, { unique: true });
@@ -1049,7 +1109,7 @@ async function startServer() {
       .collection("oauth_codes")
       .createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
-    // One-time account-link tickets
+    // Account-link ticket indexes.
     await db
       .collection("oauth_link_tickets")
       .createIndex({ codeHash: 1 }, { unique: true });
@@ -1062,6 +1122,7 @@ async function startServer() {
       console.log("MongoDB connected successfully!");
       console.log(`Kindora API running on port ${PORT}`);
       console.log(`OAuth callback base URL: ${API_BASE_URL}`);
+      console.log("CORS configuration loaded successfully.");
     });
   } catch (error) {
     console.error("Server startup failed:", error.message);
