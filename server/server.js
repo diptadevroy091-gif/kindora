@@ -235,6 +235,7 @@ app.post("/api/auth/login", async (req, res) => {
 
 // =========================
 // GET ALL EVENTS
+// GET /api/events
 // =========================
 
 app.get("/api/events", async (req, res) => {
@@ -252,7 +253,7 @@ app.get("/api/events", async (req, res) => {
       .sort({ _id: -1 })
       .toArray();
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       count: events.length,
       events,
@@ -260,7 +261,7 @@ app.get("/api/events", async (req, res) => {
   } catch (error) {
     console.error("Failed to fetch events:", error.message);
 
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: "Failed to fetch events",
     });
@@ -269,6 +270,7 @@ app.get("/api/events", async (req, res) => {
 
 // =========================
 // CREATE EVENT
+// POST /api/events
 // =========================
 
 app.post("/api/events", async (req, res) => {
@@ -301,7 +303,7 @@ app.post("/api/events", async (req, res) => {
 
     const result = await db.collection("events").insertOne(newEvent);
 
-    res.status(201).json({
+    return res.status(201).json({
       success: true,
       message: "Event created successfully",
       event: {
@@ -312,7 +314,7 @@ app.post("/api/events", async (req, res) => {
   } catch (error) {
     console.error("Failed to create event:", error.message);
 
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: "Failed to create event",
     });
@@ -321,6 +323,7 @@ app.post("/api/events", async (req, res) => {
 
 // =========================
 // UPDATE EVENT
+// PUT /api/events/:id
 // =========================
 
 app.put("/api/events/:id", async (req, res) => {
@@ -371,14 +374,14 @@ app.put("/api/events/:id", async (req, res) => {
       });
     }
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       message: "Event updated successfully",
     });
   } catch (error) {
     console.error("Failed to update event:", error.message);
 
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: "Failed to update event",
     });
@@ -387,6 +390,7 @@ app.put("/api/events/:id", async (req, res) => {
 
 // =========================
 // DELETE EVENT
+// DELETE /api/events/:id
 // =========================
 
 app.delete("/api/events/:id", async (req, res) => {
@@ -418,16 +422,79 @@ app.delete("/api/events/:id", async (req, res) => {
       });
     }
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       message: "Event deleted successfully",
     });
   } catch (error) {
     console.error("Failed to delete event:", error.message);
 
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: "Failed to delete event",
+    });
+  }
+});
+
+// =========================
+// NEWSLETTER SUBSCRIPTION
+// POST /api/newsletter/subscribe
+// =========================
+
+app.post("/api/newsletter/subscribe", async (req, res) => {
+  try {
+    if (!db) {
+      return res.status(503).json({
+        success: false,
+        message: "Database is not connected",
+      });
+    }
+
+    const { email } = req.body;
+
+    if (typeof email !== "string" || !email.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "Email address is required",
+      });
+    }
+
+    const cleanEmail = email.trim().toLowerCase();
+
+    if (
+      cleanEmail.length > 254 ||
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Please provide a valid email address",
+      });
+    }
+
+    const subscribers = db.collection("newsletter_subscribers");
+
+    await subscribers.insertOne({
+      email: cleanEmail,
+      subscribedAt: new Date(),
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: "Successfully subscribed! Thank you for joining Kindora.",
+    });
+  } catch (error) {
+    if (error.code === 11000) {
+      return res.status(409).json({
+        success: false,
+        message: "This email is already subscribed!",
+      });
+    }
+
+    console.error("Newsletter subscription failed:", error.message);
+
+    return res.status(500).json({
+      success: false,
+      message: "Subscription failed. Please try again.",
     });
   }
 });
@@ -458,8 +525,13 @@ async function startServer() {
 
     await db.command({ ping: 1 });
 
-    // Enforce unique email addresses in MongoDB.
+    // Unique email index for users
     await db.collection("users").createIndex({ email: 1 }, { unique: true });
+
+    // Unique email index for newsletter subscribers
+    await db
+      .collection("newsletter_subscribers")
+      .createIndex({ email: 1 }, { unique: true });
 
     console.log("MongoDB connected successfully!");
 

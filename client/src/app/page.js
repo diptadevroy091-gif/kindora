@@ -3,8 +3,10 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 
-// Deployed Render Backend API
+// Deployed Render Backend APIs
 const API_URL = "https://kindora-api-vb9y.onrender.com/api/events";
+const NEWSLETTER_API =
+  "https://kindora-api-vb9y.onrender.com/api/newsletter/subscribe";
 
 const features = [
   {
@@ -51,6 +53,12 @@ export default function Home() {
 
   const [user, setUser] = useState(null);
   const [authChecked, setAuthChecked] = useState(false);
+
+  // Newsletter states
+  const [newsletterEmail, setNewsletterEmail] = useState("");
+  const [newsletterLoading, setNewsletterLoading] = useState(false);
+  const [newsletterMessage, setNewsletterMessage] = useState("");
+  const [newsletterError, setNewsletterError] = useState("");
 
   // Check login status
   useEffect(() => {
@@ -119,6 +127,58 @@ export default function Home() {
   useEffect(() => {
     fetchEvents();
   }, []);
+
+  // Newsletter Subscription
+  async function handleNewsletterSubmit(e) {
+    e.preventDefault();
+
+    setNewsletterMessage("");
+    setNewsletterError("");
+
+    const cleanEmail = newsletterEmail.trim().toLowerCase();
+
+    if (!cleanEmail) {
+      setNewsletterError("Please enter your email address.");
+      return;
+    }
+
+    try {
+      setNewsletterLoading(true);
+
+      const response = await fetch(NEWSLETTER_API, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email: cleanEmail,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || "Subscription failed.");
+      }
+
+      setNewsletterMessage(
+        data.message ||
+          "Successfully subscribed! Thank you for joining Kindora.",
+      );
+
+      setNewsletterEmail("");
+    } catch (error) {
+      console.error("Newsletter subscription error:", error);
+
+      setNewsletterError(
+        error.message === "Failed to fetch"
+          ? "Cannot connect to the server. Please try again later."
+          : error.message,
+      );
+    } finally {
+      setNewsletterLoading(false);
+    }
+  }
 
   // Open Edit Modal
   function handleEditClick(event) {
@@ -849,29 +909,63 @@ export default function Home() {
 
           <form
             className="mx-auto mt-7 flex max-w-lg flex-col gap-3 sm:flex-row"
-            onSubmit={(e) => e.preventDefault()}
+            onSubmit={handleNewsletterSubmit}
           >
             <input
               type="email"
               required
+              maxLength={254}
+              value={newsletterEmail}
+              onChange={(e) => {
+                setNewsletterEmail(e.target.value);
+                setNewsletterMessage("");
+                setNewsletterError("");
+              }}
               placeholder="Your email address"
               aria-label="Your email address"
-              className="min-w-0 flex-1 rounded-full border px-5 py-3 outline-none"
-              style={{ background: surface, color: text, borderColor: border }}
+              autoComplete="email"
+              disabled={newsletterLoading}
+              className="min-w-0 flex-1 rounded-full border px-5 py-3 outline-none disabled:opacity-60"
+              style={{
+                background: surface,
+                color: text,
+                borderColor: border,
+              }}
             />
 
             <button
               type="submit"
-              className="rounded-full px-6 py-3 font-semibold text-white"
+              disabled={newsletterLoading}
+              className="rounded-full px-6 py-3 font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
               style={{ background: green }}
             >
-              Subscribe ↗
+              {newsletterLoading ? "Subscribing..." : "Subscribe ↗"}
             </button>
           </form>
 
-          <p className="mt-3 text-xs" style={{ color: muted }}>
-            Newsletter preview only — no emails are sent yet.
-          </p>
+          {newsletterMessage && (
+            <p
+              role="status"
+              className="mx-auto mt-4 max-w-lg rounded-xl bg-green-100 px-4 py-3 text-sm font-medium text-green-800"
+            >
+              ✓ {newsletterMessage}
+            </p>
+          )}
+
+          {newsletterError && (
+            <p
+              role="alert"
+              className="mx-auto mt-4 max-w-lg rounded-xl bg-red-100 px-4 py-3 text-sm font-medium text-red-700"
+            >
+              {newsletterError}
+            </p>
+          )}
+
+          {!newsletterMessage && !newsletterError && (
+            <p className="mt-3 text-xs" style={{ color: muted }}>
+              Join the Kindora community and stay connected.
+            </p>
+          )}
         </div>
       </section>
 
