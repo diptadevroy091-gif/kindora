@@ -12,13 +12,7 @@ import crypto from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-// ==========================================
-// ENVIRONMENT
-// ==========================================
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(__dirname, ".env") });
 
 const app = express();
@@ -30,39 +24,29 @@ const CLIENT_URL = (process.env.CLIENT_URL || "http://localhost:3000").replace(
 );
 
 const API_BASE_URL = (
-  process.env.API_BASE_URL || "http://localhost:5000"
+  process.env.API_BASE_URL || `http://localhost:${PORT}`
 ).replace(/\/+$/, "");
 
-const IS_PRODUCTION = process.env.NODE_ENV === "production";
+const PRODUCTION = process.env.NODE_ENV === "production";
+const LINK_TICKET_TTL_MS = 2 * 60 * 1000;
 
-app.disable("x-powered-by");
-
-if (IS_PRODUCTION) {
-  app.set("trust proxy", 1);
-}
-
-// ==========================================
-// VALIDATE ENVIRONMENT
-// ==========================================
-
-if (!process.env.OAUTH_SESSION_SECRET?.trim()) {
-  console.error("Missing OAUTH_SESSION_SECRET.");
-  process.exit(1);
+if (!process.env.MONGODB_URI) {
+  throw new Error("MONGODB_URI is missing");
 }
 
 if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) {
-  console.error("JWT_SECRET must be at least 32 characters.");
-  process.exit(1);
+  throw new Error("JWT_SECRET must be at least 32 characters");
 }
 
-if (!process.env.MONGODB_URI) {
-  console.error("MONGODB_URI is missing.");
-  process.exit(1);
+if (!process.env.OAUTH_SESSION_SECRET) {
+  throw new Error("OAUTH_SESSION_SECRET is missing");
 }
 
-// ==========================================
-// MIDDLEWARE
-// ==========================================
+app.disable("x-powered-by");
+
+if (PRODUCTION) {
+  app.set("trust proxy", 1);
+}
 
 const allowedOrigins = new Set([
   CLIENT_URL,
@@ -86,7 +70,6 @@ app.use(
 
 app.use(express.json({ limit: "20kb" }));
 
-// OAuth session middleware
 app.use(
   session({
     name: "kindora.oauth.sid",
@@ -95,7 +78,7 @@ app.use(
     saveUninitialized: false,
     cookie: {
       httpOnly: true,
-      secure: IS_PRODUCTION,
+      secure: PRODUCTION,
       sameSite: "lax",
       maxAge: 10 * 60 * 1000,
     },
@@ -104,32 +87,23 @@ app.use(
 
 app.use(passport.initialize());
 
-// ==========================================
-// DATABASE
-// ==========================================
-
 let db;
 
-const usersCollection = () => db.collection("users");
+const users = () => db.collection("users");
 
-function validEmail(email) {
-  return (
-    typeof email === "string" &&
-    email.length <= 254 &&
-    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
-  );
-}
+const validEmail = (email) =>
+  typeof email === "string" &&
+  email.length <= 254 &&
+  /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
-function publicUser(user) {
-  return {
-    _id: user._id,
-    name: user.name,
-    email: user.email,
-  };
-}
+const publicUser = (user) => ({
+  _id: user._id,
+  name: user.name,
+  email: user.email,
+});
 
-function createToken(user) {
-  return jwt.sign(
+const makeToken = (user) =>
+  jwt.sign(
     {
       sub: user._id.toString(),
       email: user.email,
@@ -137,80 +111,78 @@ function createToken(user) {
     process.env.JWT_SECRET,
     { expiresIn: "1d" },
   );
+
+const newCode = () => crypto.randomBytes(32).toString("base64url");
+
+const hashCode = (code) =>
+  crypto.createHash("sha256").update(code).digest("hex");
+
+function redirectError(error) {
+  const url = new URL("/auth/callback", CLIENT_URL);
+  url.searchParams.set("error", error);
+  return url.toString();
 }
 
-function oauthConfigured(provider) {
+function isConfigured(provider) {
   const prefix = provider === "google" ? "GOOGLE" : "GITHUB";
 
   return Boolean(
     process.env[`${prefix}_CLIENT_ID`] &&
-    process.env[`${prefix}_CLIENT_SECRET`] &&
-    process.env.OAUTH_SESSION_SECRET,
+    process.env[`${prefix}_CLIENT_SECRET`],
   );
 }
 
-function makeOAuthErrorRedirect(message) {
-  const url = new URL("/auth/callback", CLIENT_URL);
-  url.searchParams.set("error", message);
-  return url.toString();
-}
-
-function createOneTimeCode() {
-  return crypto.randomBytes(32).toString("base64url");
-}
-
-function hashOneTimeCode(code) {
-  return crypto.createHash("sha256").update(code).digest("hex");
-}
-
 // ==========================================
-// CREATE OR FIND OAUTH USER
+// KINDORA JWT AUTHENTICATION
 // ==========================================
 
-async function findOrCreateOAuthUser({ provider, providerId, email, name }) {
-  if (!db) throw new Error("Database is not connected");
-  if (!providerId) throw new Error("Provider ID is missing");
-  if (!validEmail(email)) throw new Error("A valid email is required");
+async function requireAuth(req, res, next) {
+  try {
+    const header = req.headers.authorization || "";
+    const [scheme, token] = header.split(" ");
 
-  const users = usersCollection();
-  const providerField = provider === "google" ? "googleId" : "githubId";
+    if (scheme !== "Bearer" || !token) {
+      return res.status(401).json({
+        success: false,
+        message: "Please sign in to your Kindora account first.",
+      });
+    }
 
-  const linkedUser = await users.findOne({
-    [providerField]: String(providerId),
-  });
+    const payload = jwt.verify(token, process.env.JWT_SECRET);
 
-  if (linkedUser) return linkedUser;
+    if (typeof payload.sub !== "string" || !ObjectId.isValid(payload.sub)) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid token",
+      });
+    }
 
-  const cleanEmail = email.trim().toLowerCase();
-  const existingUser = await users.findOne({ email: cleanEmail });
+    const user = await users().findOne({
+      _id: new ObjectId(payload.sub),
+    });
 
-  if (existingUser) {
-    throw new Error(
-      "An account already uses this email. Sign in using your existing method.",
-    );
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: "Account not found",
+      });
+    }
+
+    req.kindoraUser = user;
+    return next();
+  } catch {
+    return res.status(401).json({
+      success: false,
+      message: "Your session is invalid or expired. Please sign in again.",
+    });
   }
-
-  const newUser = {
-    name:
-      typeof name === "string" && name.trim()
-        ? name.trim().slice(0, 80)
-        : cleanEmail.split("@")[0],
-    email: cleanEmail,
-    password: null,
-    [providerField]: String(providerId),
-    createdAt: new Date(),
-  };
-
-  const result = await users.insertOne(newUser);
-
-  return { ...newUser, _id: result.insertedId };
 }
 
 // ==========================================
-// GOOGLE OAUTH STRATEGY
+// GOOGLE STRATEGY
 // ==========================================
 
-if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
+if (isConfigured("google")) {
   passport.use(
     "google",
     new GoogleStrategy(
@@ -223,24 +195,22 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
       },
       async (accessToken, refreshToken, profile, done) => {
         try {
+          const email = profile.emails?.[0]?.value;
+
           const verified =
             profile._json?.email_verified === true ||
             profile._json?.email_verified === "true";
 
-          const email = profile.emails?.[0]?.value;
-
           if (!verified || !validEmail(email)) {
-            return done(new Error("Use a verified Google email address."));
+            return done(new Error("Google email is not verified"));
           }
 
-          const user = await findOrCreateOAuthUser({
+          return done(null, {
             provider: "google",
-            providerId: profile.id,
-            email,
-            name: profile.displayName,
+            providerId: String(profile.id),
+            email: email.trim().toLowerCase(),
+            name: profile.displayName || email.split("@")[0],
           });
-
-          return done(null, user);
         } catch (error) {
           return done(error);
         }
@@ -250,10 +220,10 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
 }
 
 // ==========================================
-// GITHUB OAUTH STRATEGY
+// GITHUB STRATEGY
 // ==========================================
 
-if (process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET) {
+if (isConfigured("github")) {
   passport.use(
     "github",
     new GitHubStrategy(
@@ -276,29 +246,26 @@ if (process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET) {
           });
 
           if (!response.ok) {
-            throw new Error("Could not retrieve GitHub email.");
+            throw new Error("Could not retrieve GitHub email");
           }
 
           const emails = await response.json();
 
-          const verifiedEmail = Array.isArray(emails)
-            ? emails.find((item) => item.primary && item.verified)
-            : null;
+          const primary = emails.find((item) => item.primary && item.verified);
 
-          if (!verifiedEmail || !validEmail(verifiedEmail.email)) {
-            throw new Error(
-              "GitHub requires a primary verified email address.",
-            );
+          if (!primary || !validEmail(primary.email)) {
+            throw new Error("GitHub primary email is not verified");
           }
 
-          const user = await findOrCreateOAuthUser({
+          return done(null, {
             provider: "github",
-            providerId: profile.id,
-            email: verifiedEmail.email,
-            name: profile.displayName || profile.username,
+            providerId: String(profile.id),
+            email: primary.email.trim().toLowerCase(),
+            name:
+              profile.displayName ||
+              profile.username ||
+              primary.email.split("@")[0],
           });
-
-          return done(null, user);
         } catch (error) {
           return done(error);
         }
@@ -308,21 +275,213 @@ if (process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET) {
 }
 
 // ==========================================
-// HEALTH CHECK
+// OAUTH HELPERS
+// ==========================================
+
+function startOAuth(provider) {
+  return (req, res, next) => {
+    if (!isConfigured(provider)) {
+      return res.redirect(redirectError("oauth_not_configured"));
+    }
+
+    // Normal login must never inherit an old account-link session.
+    delete req.session.oauthLinkUserId;
+    delete req.session.oauthLinkProvider;
+
+    req.session.save((error) => {
+      if (error) return next(error);
+
+      passport.authenticate(provider, {
+        session: false,
+        scope: provider === "google" ? ["profile", "email"] : ["user:email"],
+      })(req, res, next);
+    });
+  };
+}
+
+async function createOAuthCode(user) {
+  const code = newCode();
+  const now = new Date();
+
+  await db.collection("oauth_codes").insertOne({
+    codeHash: hashCode(code),
+    userId: user._id,
+    createdAt: now,
+    expiresAt: new Date(now.getTime() + 2 * 60 * 1000),
+  });
+
+  return code;
+}
+
+function oauthCallback(provider) {
+  return (req, res, next) => {
+    if (!isConfigured(provider)) {
+      return res.redirect(redirectError("oauth_not_configured"));
+    }
+
+    passport.authenticate(
+      provider,
+      { session: false },
+      async (error, identity) => {
+        try {
+          if (error || !identity) {
+            console.error(
+              `${provider} OAuth failed:`,
+              error?.message || "No profile",
+            );
+
+            return res.redirect(redirectError("oauth_login_failed"));
+          }
+
+          if (!db) {
+            return res.redirect(redirectError("database_unavailable"));
+          }
+
+          const providerField = provider === "google" ? "googleId" : "githubId";
+
+          const linkUserId = req.session?.oauthLinkUserId;
+          const linkProvider = req.session?.oauthLinkProvider;
+
+          // --------------------------------------
+          // LINK MODE
+          // Only link to the signed-in Kindora user.
+          // --------------------------------------
+
+          if (linkUserId && linkProvider === provider) {
+            const targetId = new ObjectId(linkUserId);
+
+            const targetUser = await users().findOne({
+              _id: targetId,
+            });
+
+            if (!targetUser) {
+              return res.redirect(redirectError("link_account_not_found"));
+            }
+
+            // The verified provider email must match the signed-in user.
+            if (targetUser.email.toLowerCase() !== identity.email) {
+              return res.redirect(redirectError("link_email_mismatch"));
+            }
+
+            const alreadyLinked = await users().findOne({
+              [providerField]: identity.providerId,
+            });
+
+            if (alreadyLinked && !alreadyLinked._id.equals(targetId)) {
+              return res.redirect(redirectError("provider_already_linked"));
+            }
+
+            if (
+              targetUser[providerField] &&
+              targetUser[providerField] !== identity.providerId
+            ) {
+              return res.redirect(
+                redirectError("another_provider_already_linked"),
+              );
+            }
+
+            await users().updateOne(
+              { _id: targetId },
+              {
+                $set: {
+                  [providerField]: identity.providerId,
+                  [`${provider}LinkedAt`]: new Date(),
+                },
+              },
+            );
+
+            delete req.session.oauthLinkUserId;
+            delete req.session.oauthLinkProvider;
+
+            return req.session.save((saveError) => {
+              if (saveError) {
+                return res.redirect(redirectError("link_session_failed"));
+              }
+
+              return res.redirect(
+                `${CLIENT_URL}/auth/callback?linked=${encodeURIComponent(provider)}`,
+              );
+            });
+          }
+
+          // --------------------------------------
+          // LOGIN MODE
+          // 1. Existing provider-linked user logs in.
+          // 2. Existing email with no provider link is rejected.
+          // 3. A completely new email can register.
+          // --------------------------------------
+
+          let user = await users().findOne({
+            [providerField]: identity.providerId,
+          });
+
+          if (!user) {
+            const existingEmail = await users().findOne({
+              email: identity.email,
+            });
+
+            if (existingEmail) {
+              // Do not auto-link an email/password account.
+              return res.redirect(
+                redirectError("account_exists_sign_in_and_link"),
+              );
+            }
+
+            const created = {
+              name: String(identity.name || identity.email.split("@")[0]).slice(
+                0,
+                80,
+              ),
+              email: identity.email,
+              password: null,
+              [providerField]: identity.providerId,
+              createdAt: new Date(),
+            };
+
+            const result = await users().insertOne(created);
+
+            user = {
+              ...created,
+              _id: result.insertedId,
+            };
+          }
+
+          const code = await createOAuthCode(user);
+
+          const url = new URL("/auth/callback", CLIENT_URL);
+          url.searchParams.set("code", code);
+
+          return res.redirect(url.toString());
+        } catch (callbackError) {
+          console.error(`${provider} callback error:`, callbackError.message);
+
+          return res.redirect(
+            redirectError(
+              callbackError.code === 11000
+                ? "account_already_exists"
+                : "oauth_callback_failed",
+            ),
+          );
+        }
+      },
+    )(req, res, next);
+  };
+}
+
+// ==========================================
+// HEALTH
 // ==========================================
 
 app.get("/", (req, res) => {
   res.json({
     success: true,
-    message: "Kindora API is running!",
+    message: "Kindora API is running",
   });
 });
 
 app.get("/api/health", (req, res) => {
   res.json({
     success: true,
-    service: "Kindora Server",
-    status: "healthy",
     database: db ? "connected" : "disconnected",
   });
 });
@@ -333,13 +492,6 @@ app.get("/api/health", (req, res) => {
 
 app.post("/api/auth/register", async (req, res) => {
   try {
-    if (!db) {
-      return res.status(503).json({
-        success: false,
-        message: "Database is not connected",
-      });
-    }
-
     const { name, email, password } = req.body ?? {};
 
     if (
@@ -349,36 +501,34 @@ app.post("/api/auth/register", async (req, res) => {
     ) {
       return res.status(400).json({
         success: false,
-        message: "Name, email, and password are required",
+        message: "Name, email and password are required",
       });
     }
 
     const cleanName = name.trim();
     const cleanEmail = email.trim().toLowerCase();
 
-    if (cleanName.length < 2 || cleanName.length > 80) {
+    if (
+      cleanName.length < 2 ||
+      cleanName.length > 80 ||
+      !validEmail(cleanEmail)
+    ) {
       return res.status(400).json({
         success: false,
-        message: "Name must be between 2 and 80 characters",
-      });
-    }
-
-    if (!validEmail(cleanEmail)) {
-      return res.status(400).json({
-        success: false,
-        message: "Please provide a valid email address",
+        message: "Please check your name and email",
       });
     }
 
     if (password.length < 8 || password.length > 72) {
       return res.status(400).json({
         success: false,
-        message: "Password must be between 8 and 72 characters",
+        message: "Password must be 8–72 characters",
       });
     }
 
-    const users = usersCollection();
-    const existing = await users.findOne({ email: cleanEmail });
+    const existing = await users().findOne({
+      email: cleanEmail,
+    });
 
     if (existing) {
       return res.status(409).json({
@@ -387,31 +537,29 @@ app.post("/api/auth/register", async (req, res) => {
       });
     }
 
-    const hashedPassword = await bcrypt.hash(password, 12);
-
-    const newUser = {
+    const record = {
       name: cleanName,
       email: cleanEmail,
-      password: hashedPassword,
+      password: await bcrypt.hash(password, 12),
       createdAt: new Date(),
     };
 
-    const result = await users.insertOne(newUser);
+    const result = await users().insertOne(record);
 
     const user = {
       _id: result.insertedId,
-      name: newUser.name,
-      email: newUser.email,
+      name: record.name,
+      email: record.email,
     };
 
     return res.status(201).json({
       success: true,
       message: "Registration successful",
-      token: createToken(user),
+      token: makeToken(user),
       user,
     });
   } catch (error) {
-    console.error("Registration failed:", error.message);
+    console.error("Registration error:", error.message);
 
     if (error.code === 11000) {
       return res.status(409).json({
@@ -422,7 +570,7 @@ app.post("/api/auth/register", async (req, res) => {
 
     return res.status(500).json({
       success: false,
-      message: "Registration failed. Please try again.",
+      message: "Registration failed",
     });
   }
 });
@@ -433,28 +581,16 @@ app.post("/api/auth/register", async (req, res) => {
 
 app.post("/api/auth/login", async (req, res) => {
   try {
-    if (!db) {
-      return res.status(503).json({
-        success: false,
-        message: "Database is not connected",
-      });
-    }
-
     const { email, password } = req.body ?? {};
 
-    if (
-      typeof email !== "string" ||
-      typeof password !== "string" ||
-      !email.trim() ||
-      !password
-    ) {
+    if (typeof email !== "string" || typeof password !== "string") {
       return res.status(400).json({
         success: false,
         message: "Email and password are required",
       });
     }
 
-    const user = await usersCollection().findOne({
+    const user = await users().findOne({
       email: email.trim().toLowerCase(),
     });
 
@@ -469,108 +605,130 @@ app.post("/api/auth/login", async (req, res) => {
       });
     }
 
-    const safeUser = publicUser(user);
-
     return res.json({
       success: true,
       message: "Login successful",
-      token: createToken(safeUser),
-      user: safeUser,
+      token: makeToken(user),
+      user: publicUser(user),
     });
   } catch (error) {
-    console.error("Login failed:", error.message);
+    console.error("Login error:", error.message);
 
     return res.status(500).json({
       success: false,
-      message: "Login failed. Please try again.",
+      message: "Login failed",
     });
   }
 });
 
 // ==========================================
-// OAUTH START AND CALLBACK
+// OAUTH LOGIN ROUTES
 // ==========================================
 
-function oauthStart(provider) {
-  return (req, res, next) => {
-    if (!oauthConfigured(provider)) {
-      return res
-        .status(503)
-        .send(`${provider} OAuth is not configured on the server.`);
-    }
-
-    const options = {
-      session: false,
-      scope: provider === "google" ? ["profile", "email"] : ["user:email"],
-    };
-
-    passport.authenticate(provider, options)(req, res, next);
-  };
-}
-
-function oauthCallback(provider) {
-  return (req, res, next) => {
-    if (!oauthConfigured(provider)) {
-      return res.redirect(makeOAuthErrorRedirect(`${provider}_not_configured`));
-    }
-
-    passport.authenticate(provider, { session: false }, async (error, user) => {
-      try {
-        if (error || !user) {
-          console.error(
-            `${provider} OAuth failed:`,
-            error?.message || "No user returned",
-          );
-
-          return res.redirect(makeOAuthErrorRedirect("oauth_login_failed"));
-        }
-
-        if (!db) {
-          return res.redirect(makeOAuthErrorRedirect("database_unavailable"));
-        }
-
-        const code = createOneTimeCode();
-        const now = new Date();
-
-        await db.collection("oauth_codes").insertOne({
-          codeHash: hashOneTimeCode(code),
-          userId: user._id,
-          createdAt: now,
-          expiresAt: new Date(now.getTime() + 2 * 60 * 1000),
-        });
-
-        const callbackURL = new URL("/auth/callback", CLIENT_URL);
-        callbackURL.searchParams.set("code", code);
-
-        return res.redirect(callbackURL.toString());
-      } catch (callbackError) {
-        console.error(`${provider} callback failed:`, callbackError.message);
-
-        return res.redirect(makeOAuthErrorRedirect("oauth_callback_failed"));
-      }
-    })(req, res, next);
-  };
-}
-
-app.get("/api/auth/google", oauthStart("google"));
+app.get("/api/auth/google", startOAuth("google"));
 app.get("/api/auth/google/callback", oauthCallback("google"));
 
-app.get("/api/auth/github", oauthStart("github"));
+app.get("/api/auth/github", startOAuth("github"));
 app.get("/api/auth/github/callback", oauthCallback("github"));
 
 // ==========================================
-// EXCHANGE OAUTH ONE-TIME CODE
+// GOOGLE ACCOUNT-LINK TICKET
+// Browser navigation cannot send a Bearer header.
+// First request a short-lived ticket using the JWT.
+// ==========================================
+
+app.post("/api/auth/google/link-ticket", requireAuth, async (req, res) => {
+  try {
+    if (!isConfigured("google")) {
+      return res.status(503).json({
+        success: false,
+        message: "Google OAuth is not configured",
+      });
+    }
+
+    const ticket = newCode();
+    const now = new Date();
+
+    await db.collection("oauth_link_tickets").insertOne({
+      codeHash: hashCode(ticket),
+      userId: req.kindoraUser._id,
+      provider: "google",
+      createdAt: now,
+      expiresAt: new Date(now.getTime() + LINK_TICKET_TTL_MS),
+    });
+
+    res.set("Cache-Control", "no-store");
+    res.set("Referrer-Policy", "no-referrer");
+
+    return res.json({
+      success: true,
+      ticket,
+    });
+  } catch (error) {
+    console.error("Link ticket error:", error.message);
+
+    return res.status(500).json({
+      success: false,
+      message: "Could not start Google account linking",
+    });
+  }
+});
+
+// Consume the one-time ticket, then begin the Google OAuth flow.
+app.get("/api/auth/google/link", async (req, res, next) => {
+  try {
+    const ticket = req.query.ticket;
+
+    if (
+      typeof ticket !== "string" ||
+      ticket.length < 32 ||
+      ticket.length > 200
+    ) {
+      return res.redirect(redirectError("invalid_link_ticket"));
+    }
+
+    if (!isConfigured("google")) {
+      return res.redirect(redirectError("oauth_not_configured"));
+    }
+
+    const ticketRecord = await db
+      .collection("oauth_link_tickets")
+      .findOneAndDelete({
+        codeHash: hashCode(ticket),
+        provider: "google",
+        expiresAt: { $gt: new Date() },
+      });
+
+    const record = ticketRecord?.value ?? ticketRecord;
+
+    if (!record?.userId) {
+      return res.redirect(redirectError("invalid_link_ticket"));
+    }
+
+    req.session.oauthLinkUserId = record.userId.toString();
+    req.session.oauthLinkProvider = "google";
+
+    req.session.save((error) => {
+      if (error) return next(error);
+
+      passport.authenticate("google", {
+        session: false,
+        scope: ["profile", "email"],
+      })(req, res, next);
+    });
+  } catch (error) {
+    console.error("Google link start error:", error.message);
+
+    return res.redirect(redirectError("link_start_failed"));
+  }
+});
+
+// ==========================================
+// EXCHANGE ONE-TIME OAUTH CODE
 // ==========================================
 
 app.post("/api/auth/oauth/exchange", async (req, res) => {
   try {
-    if (!db) {
-      return res.status(503).json({
-        success: false,
-        message: "Database is not connected",
-      });
-    }
-
     const { code } = req.body ?? {};
 
     if (typeof code !== "string" || code.length < 32 || code.length > 200) {
@@ -581,7 +739,7 @@ app.post("/api/auth/oauth/exchange", async (req, res) => {
     }
 
     const result = await db.collection("oauth_codes").findOneAndDelete({
-      codeHash: hashOneTimeCode(code),
+      codeHash: hashCode(code),
       expiresAt: { $gt: new Date() },
     });
 
@@ -590,7 +748,7 @@ app.post("/api/auth/oauth/exchange", async (req, res) => {
     if (!record?.userId) {
       return res.status(401).json({
         success: false,
-        message: "Invalid or expired sign-in code. Please try again.",
+        message: "Invalid or expired sign-in code",
       });
     }
 
@@ -599,46 +757,36 @@ app.post("/api/auth/oauth/exchange", async (req, res) => {
         ? record.userId
         : new ObjectId(record.userId);
 
-    const user = await usersCollection().findOne({ _id: userId });
+    const user = await users().findOne({ _id: userId });
 
     if (!user) {
       return res.status(401).json({
         success: false,
-        message: "Account not found. Please sign in again.",
+        message: "Account not found",
       });
     }
 
-    const safeUser = publicUser(user);
-
     return res.json({
       success: true,
-      message: "OAuth login successful",
-      token: createToken(safeUser),
-      user: safeUser,
+      token: makeToken(user),
+      user: publicUser(user),
     });
   } catch (error) {
-    console.error("OAuth exchange failed:", error.message);
+    console.error("OAuth exchange error:", error.message);
 
     return res.status(500).json({
       success: false,
-      message: "Could not complete sign in. Please try again.",
+      message: "Could not complete sign-in",
     });
   }
 });
 
 // ==========================================
-// GET EVENTS
+// EVENTS
 // ==========================================
 
 app.get("/api/events", async (req, res) => {
   try {
-    if (!db) {
-      return res.status(503).json({
-        success: false,
-        message: "Database is not connected",
-      });
-    }
-
     const events = await db
       .collection("events")
       .find({})
@@ -651,7 +799,7 @@ app.get("/api/events", async (req, res) => {
       events,
     });
   } catch (error) {
-    console.error("Fetch events failed:", error.message);
+    console.error("Fetch events error:", error.message);
 
     return res.status(500).json({
       success: false,
@@ -660,19 +808,8 @@ app.get("/api/events", async (req, res) => {
   }
 });
 
-// ==========================================
-// CREATE EVENT
-// ==========================================
-
 app.post("/api/events", async (req, res) => {
   try {
-    if (!db) {
-      return res.status(503).json({
-        success: false,
-        message: "Database is not connected",
-      });
-    }
-
     const { title, type, location, date, image, description } = req.body ?? {};
 
     if (
@@ -686,7 +823,7 @@ app.post("/api/events", async (req, res) => {
     ) {
       return res.status(400).json({
         success: false,
-        message: "Title, type, location, and date are required",
+        message: "Title, type, location and date are required",
       });
     }
 
@@ -704,11 +841,13 @@ app.post("/api/events", async (req, res) => {
 
     return res.status(201).json({
       success: true,
-      message: "Event created successfully",
-      event: { _id: result.insertedId, ...event },
+      event: {
+        _id: result.insertedId,
+        ...event,
+      },
     });
   } catch (error) {
-    console.error("Create event failed:", error.message);
+    console.error("Create event error:", error.message);
 
     return res.status(500).json({
       success: false,
@@ -717,19 +856,8 @@ app.post("/api/events", async (req, res) => {
   }
 });
 
-// ==========================================
-// UPDATE EVENT
-// ==========================================
-
 app.put("/api/events/:id", async (req, res) => {
   try {
-    if (!db) {
-      return res.status(503).json({
-        success: false,
-        message: "Database is not connected",
-      });
-    }
-
     const { id } = req.params;
 
     if (!ObjectId.isValid(id)) {
@@ -752,23 +880,24 @@ app.put("/api/events/:id", async (req, res) => {
     ) {
       return res.status(400).json({
         success: false,
-        message: "Title, type, location, and date are required",
+        message: "Title, type, location and date are required",
       });
     }
 
-    const updatedEvent = {
-      title: title.trim(),
-      type: type.trim(),
-      location: location.trim(),
-      date,
-      image: typeof image === "string" ? image : "",
-      description: typeof description === "string" ? description : "",
-      updatedAt: new Date(),
-    };
-
-    const result = await db
-      .collection("events")
-      .updateOne({ _id: new ObjectId(id) }, { $set: updatedEvent });
+    const result = await db.collection("events").updateOne(
+      { _id: new ObjectId(id) },
+      {
+        $set: {
+          title: title.trim(),
+          type: type.trim(),
+          location: location.trim(),
+          date,
+          image: typeof image === "string" ? image : "",
+          description: typeof description === "string" ? description : "",
+          updatedAt: new Date(),
+        },
+      },
+    );
 
     if (!result.matchedCount) {
       return res.status(404).json({
@@ -782,7 +911,7 @@ app.put("/api/events/:id", async (req, res) => {
       message: "Event updated successfully",
     });
   } catch (error) {
-    console.error("Update event failed:", error.message);
+    console.error("Update event error:", error.message);
 
     return res.status(500).json({
       success: false,
@@ -791,19 +920,8 @@ app.put("/api/events/:id", async (req, res) => {
   }
 });
 
-// ==========================================
-// DELETE EVENT
-// ==========================================
-
 app.delete("/api/events/:id", async (req, res) => {
   try {
-    if (!db) {
-      return res.status(503).json({
-        success: false,
-        message: "Database is not connected",
-      });
-    }
-
     const { id } = req.params;
 
     if (!ObjectId.isValid(id)) {
@@ -829,7 +947,7 @@ app.delete("/api/events/:id", async (req, res) => {
       message: "Event deleted successfully",
     });
   } catch (error) {
-    console.error("Delete event failed:", error.message);
+    console.error("Delete event error:", error.message);
 
     return res.status(500).json({
       success: false,
@@ -844,46 +962,37 @@ app.delete("/api/events/:id", async (req, res) => {
 
 app.post("/api/newsletter/subscribe", async (req, res) => {
   try {
-    if (!db) {
-      return res.status(503).json({
-        success: false,
-        message: "Database is not connected",
-      });
-    }
-
     const { email } = req.body ?? {};
 
     if (typeof email !== "string" || !validEmail(email.trim())) {
       return res.status(400).json({
         success: false,
-        message: "Please provide a valid email address",
+        message: "Please provide a valid email",
       });
     }
 
-    const cleanEmail = email.trim().toLowerCase();
-
     await db.collection("newsletter_subscribers").insertOne({
-      email: cleanEmail,
+      email: email.trim().toLowerCase(),
       subscribedAt: new Date(),
     });
 
     return res.status(201).json({
       success: true,
-      message: "Successfully subscribed! Thank you for joining Kindora.",
+      message: "Successfully subscribed!",
     });
   } catch (error) {
     if (error.code === 11000) {
       return res.status(409).json({
         success: false,
-        message: "This email is already subscribed!",
+        message: "This email is already subscribed",
       });
     }
 
-    console.error("Newsletter subscription failed:", error.message);
+    console.error("Newsletter error:", error.message);
 
     return res.status(500).json({
       success: false,
-      message: "Subscription failed. Please try again.",
+      message: "Subscription failed",
     });
   }
 });
@@ -895,11 +1004,13 @@ app.post("/api/newsletter/subscribe", async (req, res) => {
 app.use((error, req, res, next) => {
   console.error("Request error:", error.message);
 
-  if (res.headersSent) return next(error);
+  if (res.headersSent) {
+    return next(error);
+  }
 
   return res.status(500).json({
     success: false,
-    message: "An unexpected server error occurred.",
+    message: "An unexpected server error occurred",
   });
 });
 
@@ -913,16 +1024,23 @@ async function startServer() {
   try {
     await client.connect();
 
-    const database = client.db("kindora");
-    await database.command({ ping: 1 });
-    db = database;
+    db = client.db("kindora");
 
-    await db.collection("users").createIndex({ email: 1 }, { unique: true });
+    await db.command({ ping: 1 });
 
+    // User indexes
+    await users().createIndex({ email: 1 }, { unique: true });
+
+    await users().createIndex({ googleId: 1 }, { unique: true, sparse: true });
+
+    await users().createIndex({ githubId: 1 }, { unique: true, sparse: true });
+
+    // Newsletter indexes
     await db
       .collection("newsletter_subscribers")
       .createIndex({ email: 1 }, { unique: true });
 
+    // One-time OAuth sign-in codes
     await db
       .collection("oauth_codes")
       .createIndex({ codeHash: 1 }, { unique: true });
@@ -931,13 +1049,23 @@ async function startServer() {
       .collection("oauth_codes")
       .createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
-    app.listen(PORT, () => {
+    // One-time account-link tickets
+    await db
+      .collection("oauth_link_tickets")
+      .createIndex({ codeHash: 1 }, { unique: true });
+
+    await db
+      .collection("oauth_link_tickets")
+      .createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+
+    app.listen(PORT, "0.0.0.0", () => {
       console.log("MongoDB connected successfully!");
       console.log(`Kindora API running on port ${PORT}`);
       console.log(`OAuth callback base URL: ${API_BASE_URL}`);
     });
   } catch (error) {
     console.error("Server startup failed:", error.message);
+
     await client.close().catch(() => {});
     process.exit(1);
   }
