@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 const API_BASE = "https://kindora-api-vb9y.onrender.com";
@@ -8,6 +8,7 @@ const API_BASE = "https://kindora-api-vb9y.onrender.com";
 function CallbackContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+
   const [message, setMessage] = useState("Completing your sign in...");
 
   useEffect(() => {
@@ -25,7 +26,9 @@ function CallbackContent() {
       try {
         const response = await fetch(`${API_BASE}/api/auth/oauth/exchange`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+          },
           body: JSON.stringify({ code }),
         });
 
@@ -39,6 +42,7 @@ function CallbackContent() {
 
         sessionStorage.setItem("kindora_token", data.token);
         sessionStorage.setItem("kindora_user", JSON.stringify(data.user));
+
         window.dispatchEvent(new Event("kindora-auth-change"));
 
         router.replace("/");
@@ -62,10 +66,13 @@ function CallbackContent() {
         <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#e8f2e5] text-3xl">
           🌱
         </div>
+
         <h1 className="text-2xl font-bold">Kindora</h1>
+
         <p role="status" className="mt-3 text-sm text-gray-600">
           {message}
         </p>
+
         {message !== "Completing your sign in..." && (
           <button
             type="button"
@@ -81,5 +88,15 @@ function CallbackContent() {
 }
 
 export default function OAuthCallbackPage() {
-  return <CallbackContent />;
+  return (
+    <Suspense
+      fallback={
+        <main className="flex min-h-screen items-center justify-center bg-[#f7f8f2] text-[#183c2b]">
+          <p>Completing your sign in...</p>
+        </main>
+      }
+    >
+      <CallbackContent />
+    </Suspense>
+  );
 }
