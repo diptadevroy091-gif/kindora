@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useToast } from "@/components/ToastProvider";
 
 const API_URL = "https://kindora-api-vb9y.onrender.com/api/events";
+
 const NEWSLETTER_API =
   "https://kindora-api-vb9y.onrender.com/api/newsletter/subscribe";
 
@@ -61,6 +62,40 @@ export default function Home() {
   const [newsletterLoading, setNewsletterLoading] = useState(false);
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+
+  // PROFILE IMAGE
+  const profileImage =
+    user?.avatar || user?.photoURL || user?.picture || user?.image || "";
+
+  // USER INITIALS
+  function getInitials(name = "User") {
+    return name
+      .trim()
+      .split(/\s+/)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase() || "")
+      .join("");
+  }
+
+  // GET AUTH TOKEN
+  function getAuthToken() {
+    if (typeof window === "undefined") return null;
+
+    return sessionStorage.getItem("kindora_token");
+  }
+
+  // CHECK EVENT OWNER
+  function isEventOwner(event) {
+    if (!user?._id || !event?.ownerId) return false;
+
+    const ownerId =
+      typeof event.ownerId === "object"
+        ? String(event.ownerId._id || event.ownerId)
+        : String(event.ownerId);
+
+    return ownerId === String(user._id);
+  }
 
   // AUTHENTICATION
   useEffect(() => {
@@ -70,7 +105,8 @@ export default function Home() {
         const savedToken = sessionStorage.getItem("kindora_token");
 
         if (savedUser && savedToken) {
-          setUser(JSON.parse(savedUser));
+          const parsedUser = JSON.parse(savedUser);
+          setUser(parsedUser);
         } else {
           setUser(null);
         }
@@ -100,6 +136,7 @@ export default function Home() {
 
     setUser(null);
     setMobileMenuOpen(false);
+    setProfileMenuOpen(false);
 
     window.dispatchEvent(new Event("kindora-auth-change"));
     window.location.href = "/";
@@ -136,7 +173,6 @@ export default function Home() {
 
   useEffect(() => {
     fetchEvents();
-    // fetchEvents is intentionally called on initial page load.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -185,6 +221,19 @@ export default function Home() {
 
   // OPEN EDIT MODAL
   function handleEditClick(event) {
+    const token = getAuthToken();
+
+    if (!token || !user) {
+      warning("Please login to edit your event.");
+      window.location.href = "/login";
+      return;
+    }
+
+    if (!isEventOwner(event)) {
+      error("You can only edit events created by you.");
+      return;
+    }
+
     setEditingEvent(event);
 
     setEditForm({
@@ -224,6 +273,20 @@ export default function Home() {
       return;
     }
 
+    const token = getAuthToken();
+
+    if (!token || !user) {
+      error("Your login session has expired. Please login again.");
+      window.location.href = "/login";
+      return;
+    }
+
+    if (!isEventOwner(editingEvent)) {
+      error("You can only update your own events.");
+      setEditingEvent(null);
+      return;
+    }
+
     try {
       setSaving(true);
 
@@ -231,6 +294,7 @@ export default function Home() {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify(editForm),
       });
@@ -241,16 +305,22 @@ export default function Home() {
         throw new Error(data.message || "Could not update event.");
       }
 
+      const updatedEvent = data.event || data.updatedEvent;
+
       setEvents((previousEvents) =>
         previousEvents.map((event) =>
-          event._id === editingEvent._id ? { ...event, ...editForm } : event,
+          event._id === editingEvent._id
+            ? updatedEvent
+              ? updatedEvent
+              : { ...event, ...editForm }
+            : event,
         ),
       );
 
       setEditingEvent(null);
       setEditForm(emptyForm);
 
-      success("Event updated successfully!");
+      success(data.message || "Event updated successfully!");
     } catch (err) {
       console.error("Update error:", err);
       error(err.message || "Event update failed.");
@@ -261,8 +331,21 @@ export default function Home() {
 
   // DELETE EVENT
   async function handleDelete(event) {
-    if (!event._id) {
+    if (!event?._id) {
       error("Event ID is missing.");
+      return;
+    }
+
+    const token = getAuthToken();
+
+    if (!token || !user) {
+      warning("Please login to delete your event.");
+      window.location.href = "/login";
+      return;
+    }
+
+    if (!isEventOwner(event)) {
+      error("You can only delete events created by you.");
       return;
     }
 
@@ -277,6 +360,9 @@ export default function Home() {
 
       const response = await fetch(`${API_URL}/${event._id}`, {
         method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
       });
 
       const data = await response.json();
@@ -289,7 +375,7 @@ export default function Home() {
         previousEvents.filter((item) => item._id !== event._id),
       );
 
-      success("Event deleted successfully!");
+      success(data.message || "Event deleted successfully!");
     } catch (err) {
       console.error("Delete error:", err);
       error(err.message || "Delete failed.");
@@ -367,6 +453,7 @@ export default function Home() {
 
           {/* NAVBAR ACTIONS */}
           <div className="flex shrink-0 items-center gap-2">
+            {/* THEME BUTTON */}
             <button
               type="button"
               onClick={() => setDark((previous) => !previous)}
@@ -377,23 +464,81 @@ export default function Home() {
               {dark ? "☀️" : "🌙"}
             </button>
 
+            {/* LOGGED IN PROFILE */}
             {authChecked && user ? (
-              <div className="hidden items-center gap-2 sm:flex">
-                <span
-                  className="max-w-28 truncate text-sm font-semibold"
-                  title={user.name || "User"}
-                >
-                  Hi, {user.name || "User"}
-                </span>
-
+              <div className="relative hidden sm:block">
                 <button
                   type="button"
-                  onClick={handleLogout}
-                  className="rounded-full border px-4 py-2.5 text-sm font-semibold"
+                  onClick={() => setProfileMenuOpen((previous) => !previous)}
+                  className="flex items-center gap-2 rounded-full border py-1.5 pl-1.5 pr-3 transition hover:opacity-80"
                   style={{ borderColor: border }}
+                  aria-expanded={profileMenuOpen}
+                  aria-label="Open profile menu"
                 >
-                  Logout
+                  {profileImage ? (
+                    <img
+                      src={profileImage}
+                      alt="Profile"
+                      className="h-9 w-9 rounded-full object-cover"
+                    />
+                  ) : (
+                    <span
+                      className="flex h-9 w-9 items-center justify-center rounded-full text-sm font-bold text-white"
+                      style={{ background: green }}
+                    >
+                      {getInitials(user.name)}
+                    </span>
+                  )}
+
+                  <span className="max-w-28 truncate text-sm font-semibold">
+                    {user.name || "User"}
+                  </span>
+
+                  <span className="text-xs">⌄</span>
                 </button>
+
+                {/* PROFILE DROPDOWN */}
+                {profileMenuOpen && (
+                  <div
+                    className="absolute right-0 top-full z-50 mt-3 w-56 overflow-hidden rounded-2xl border p-2 shadow-xl"
+                    style={{
+                      background: surface,
+                      borderColor: border,
+                    }}
+                  >
+                    <div
+                      className="border-b px-3 py-3"
+                      style={{ borderColor: border }}
+                    >
+                      <p className="truncate text-sm font-bold">
+                        {user.name || "User"}
+                      </p>
+
+                      <p
+                        className="mt-1 truncate text-xs"
+                        style={{ color: muted }}
+                      >
+                        {user.email || ""}
+                      </p>
+                    </div>
+
+                    <Link
+                      href="/profile"
+                      onClick={() => setProfileMenuOpen(false)}
+                      className="mt-2 block rounded-xl px-3 py-3 text-sm font-semibold transition hover:bg-black/5"
+                    >
+                      ✏️ Edit Profile
+                    </Link>
+
+                    <button
+                      type="button"
+                      onClick={handleLogout}
+                      className="block w-full rounded-xl px-3 py-3 text-left text-sm font-semibold text-red-500 transition hover:bg-red-50"
+                    >
+                      ↪ Logout
+                    </button>
+                  </div>
+                )}
               </div>
             ) : authChecked ? (
               <div className="hidden items-center gap-2 sm:flex">
@@ -469,16 +614,49 @@ export default function Home() {
 
                 {authChecked && user ? (
                   <>
-                    <p className="px-4 py-2 text-sm" style={{ color: muted }}>
-                      Signed in as <strong>{user.name || "User"}</strong>
-                    </p>
+                    <div className="flex items-center gap-3 px-4 py-3">
+                      {profileImage ? (
+                        <img
+                          src={profileImage}
+                          alt="Profile"
+                          className="h-10 w-10 rounded-full object-cover"
+                        />
+                      ) : (
+                        <span
+                          className="flex h-10 w-10 items-center justify-center rounded-full font-bold text-white"
+                          style={{ background: green }}
+                        >
+                          {getInitials(user.name)}
+                        </span>
+                      )}
+
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-bold">
+                          {user.name || "User"}
+                        </p>
+                        <p
+                          className="truncate text-xs"
+                          style={{ color: muted }}
+                        >
+                          {user.email || ""}
+                        </p>
+                      </div>
+                    </div>
+
+                    <Link
+                      href="/profile"
+                      onClick={() => setMobileMenuOpen(false)}
+                      className="rounded-xl px-4 py-3 text-sm font-semibold hover:bg-black/5"
+                    >
+                      ✏️ Edit Profile
+                    </Link>
 
                     <button
                       type="button"
                       onClick={handleLogout}
                       className="rounded-xl px-4 py-3 text-left text-sm font-semibold text-red-500"
                     >
-                      Logout
+                      ↪ Logout
                     </button>
                   </>
                 ) : authChecked ? (
@@ -825,23 +1003,29 @@ export default function Home() {
                       View event ↗
                     </Link>
 
-                    <button
-                      type="button"
-                      onClick={() => handleEditClick(event)}
-                      className="rounded-full border px-3 py-2 text-xs font-semibold transition hover:opacity-70 sm:px-4 sm:text-sm"
-                      style={{ borderColor: border }}
-                    >
-                      ✏️ Edit
-                    </button>
+                    {authChecked && user && isEventOwner(event) && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => handleEditClick(event)}
+                          className="rounded-full border px-3 py-2 text-xs font-semibold transition hover:opacity-70 sm:px-4 sm:text-sm"
+                          style={{ borderColor: border }}
+                        >
+                          ✏️ Edit
+                        </button>
 
-                    <button
-                      type="button"
-                      onClick={() => handleDelete(event)}
-                      disabled={deletingId === event._id}
-                      className="rounded-full border border-red-300 px-3 py-2 text-xs font-semibold text-red-500 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60 sm:px-4 sm:text-sm"
-                    >
-                      {deletingId === event._id ? "Deleting..." : "🗑 Delete"}
-                    </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(event)}
+                          disabled={deletingId === event._id}
+                          className="rounded-full border border-red-300 px-3 py-2 text-xs font-semibold text-red-500 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60 sm:px-4 sm:text-sm"
+                        >
+                          {deletingId === event._id
+                            ? "Deleting..."
+                            : "🗑 Delete"}
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
               </article>
