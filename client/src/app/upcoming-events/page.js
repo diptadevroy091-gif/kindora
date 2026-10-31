@@ -1,74 +1,102 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { useToast } from "@/components/ToastProvider";
 
 const API_URL = "https://kindora-api-vb9y.onrender.com/api/events";
 
 export default function UpcomingEvents() {
+  const { error: showError, info, success } = useToast();
+
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-
   const [search, setSearch] = useState("");
   const [selectedType, setSelectedType] = useState("All");
   const [dark, setDark] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
 
-  // THEME COLORS
   const bg = dark ? "#14231c" : "#faf9f5";
   const surface = dark ? "#1e3027" : "#ffffff";
   const text = dark ? "#f1f5ed" : "#20392c";
   const muted = dark ? "#b8c8bc" : "#68776c";
   const border = dark ? "#35493c" : "#e6e9df";
-  const green = "#315b43";
+  const green = dark ? "#496f50" : "#315b43";
 
-  // FETCH EVENTS
-  async function fetchEvents() {
-    try {
-      setLoading(true);
-      setError("");
+  const fetchEvents = useCallback(
+    async (showNotification = false) => {
+      try {
+        setLoading(true);
+        setError("");
 
-      const response = await fetch(API_URL);
-      const data = await response.json();
+        const response = await fetch(API_URL);
 
-      if (!response.ok || !data.success) {
-        throw new Error(data.message || "Could not load events");
+        let data;
+
+        try {
+          data = await response.json();
+        } catch {
+          throw new Error("The server returned an invalid response.");
+        }
+
+        if (!response.ok || !data.success) {
+          throw new Error(data.message || "Could not load events.");
+        }
+
+        setEvents(Array.isArray(data.events) ? data.events : []);
+
+        if (showNotification) {
+          success("Events refreshed successfully.");
+        }
+      } catch (err) {
+        console.error("Events error:", err);
+        setError("Unable to load events. Please try again.");
+        showError("Unable to load events. Please try again.");
+      } finally {
+        setLoading(false);
       }
-
-      setEvents(data.events || []);
-    } catch (err) {
-      console.error("Events error:", err);
-      setError("Unable to load events. Please try again.");
-    } finally {
-      setLoading(false);
-    }
-  }
+    },
+    [showError, success],
+  );
 
   useEffect(() => {
     fetchEvents();
-  }, []);
+  }, [fetchEvents]);
 
-  // EVENT TYPES
   const eventTypes = useMemo(() => {
-    const types = events.map((event) => event.type).filter(Boolean);
+    const types = events
+      .map((event) => event.type)
+      .filter((type) => typeof type === "string" && type.trim());
 
     return ["All", ...new Set(types)];
   }, [events]);
 
-  // SEARCH AND FILTER
   const filteredEvents = useMemo(() => {
-    return events.filter((event) => {
-      const searchText = search.toLowerCase();
+    const searchText = search.trim().toLowerCase();
 
-      const matchesSearch =
-        (event.title || "").toLowerCase().includes(searchText) ||
-        (event.location || "").toLowerCase().includes(searchText) ||
-        (event.description || "").toLowerCase().includes(searchText);
+    return events.filter((event) => {
+      const matchesSearch = [
+        event.title,
+        event.location,
+        event.description,
+      ].some((value) =>
+        String(value || "")
+          .toLowerCase()
+          .includes(searchText),
+      );
 
       const matchesType = selectedType === "All" || event.type === selectedType;
 
       return matchesSearch && matchesType;
     });
   }, [events, search, selectedType]);
+
+  function clearFilters() {
+    setSearch("");
+    setSelectedType("All");
+    info("Search filters cleared.");
+  }
 
   return (
     <main
@@ -81,117 +109,173 @@ export default function UpcomingEvents() {
     >
       {/* NAVBAR */}
       <header
-        className="sticky top-0 z-20 border-b"
+        className="sticky top-0 z-30 border-b backdrop-blur-xl"
         style={{
-          background: bg,
+          background: dark ? "rgba(20,35,28,.94)" : "rgba(250,249,245,.94)",
           borderColor: border,
         }}
       >
-        <nav className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-5 py-4 lg:px-8">
-          <a
+        <nav className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-4 sm:px-6 lg:px-8">
+          <Link
             href="/"
-            className="text-2xl font-extrabold tracking-tight"
+            className="shrink-0 text-2xl font-extrabold tracking-tight"
             style={{ color: dark ? "#b7d9a8" : green }}
+            onClick={() => setMenuOpen(false)}
           >
             kindora<span style={{ color: "#d28b54" }}>.</span>
-          </a>
+          </Link>
 
           <div className="hidden items-center gap-7 text-sm font-medium md:flex">
-            <a href="/" className="hover:opacity-70">
+            <Link href="/" className="transition hover:opacity-70">
               Home
-            </a>
+            </Link>
 
-            <a
+            <Link
               href="/upcoming-events"
               className="font-bold"
               style={{ color: dark ? "#b7d9a8" : green }}
             >
               Upcoming Events
-            </a>
+            </Link>
 
-            <a href="/#about" className="hover:opacity-70">
+            <Link href="/#about" className="transition hover:opacity-70">
               About Us
-            </a>
+            </Link>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex shrink-0 items-center gap-2">
             <button
               type="button"
-              onClick={() => setDark(!dark)}
-              aria-label="Toggle theme"
-              className="rounded-full border px-3 py-2"
+              onClick={() => setDark((current) => !current)}
+              aria-label={
+                dark ? "Switch to light theme" : "Switch to dark theme"
+              }
+              className="flex h-10 w-10 items-center justify-center rounded-full border transition hover:opacity-75"
               style={{ borderColor: border }}
             >
               {dark ? "☀️" : "🌙"}
             </button>
 
-            <a
+            <Link
               href="/create-event"
-              className="rounded-full px-4 py-2.5 text-sm font-semibold text-white"
+              className="hidden rounded-full px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90 sm:inline-flex"
               style={{ background: green }}
             >
               + Create Event
-            </a>
+            </Link>
+
+            <button
+              type="button"
+              onClick={() => setMenuOpen((current) => !current)}
+              className="flex h-10 w-10 items-center justify-center rounded-xl border text-xl md:hidden"
+              style={{ borderColor: border }}
+              aria-label={
+                menuOpen ? "Close navigation menu" : "Open navigation menu"
+              }
+              aria-expanded={menuOpen}
+            >
+              {menuOpen ? "×" : "☰"}
+            </button>
           </div>
         </nav>
+
+        {menuOpen && (
+          <div
+            className="border-t px-4 py-4 md:hidden"
+            style={{ borderColor: border, background: surface }}
+          >
+            <div className="mx-auto flex max-w-7xl flex-col gap-1">
+              <Link
+                href="/"
+                onClick={() => setMenuOpen(false)}
+                className="rounded-xl px-4 py-3 text-sm font-medium hover:opacity-75"
+              >
+                Home
+              </Link>
+
+              <Link
+                href="/upcoming-events"
+                onClick={() => setMenuOpen(false)}
+                className="rounded-xl px-4 py-3 text-sm font-bold"
+                style={{ color: dark ? "#b7d9a8" : green }}
+              >
+                Upcoming Events
+              </Link>
+
+              <Link
+                href="/#about"
+                onClick={() => setMenuOpen(false)}
+                className="rounded-xl px-4 py-3 text-sm font-medium hover:opacity-75"
+              >
+                About Us
+              </Link>
+
+              <Link
+                href="/create-event"
+                onClick={() => setMenuOpen(false)}
+                className="mt-2 rounded-xl px-4 py-3 text-center text-sm font-semibold text-white"
+                style={{ background: green }}
+              >
+                + Create Event
+              </Link>
+            </div>
+          </div>
+        )}
       </header>
 
       {/* HERO */}
       <section
-        className="px-5 py-16 md:py-24"
-        style={{
-          background: dark ? "#192920" : "#f0f2e9",
-        }}
+        className="px-4 py-14 sm:px-6 sm:py-20 lg:px-8 lg:py-24"
+        style={{ background: dark ? "#192920" : "#f0f2e9" }}
       >
         <div className="mx-auto max-w-7xl">
           <div
             className="mb-5 inline-flex items-center gap-2 rounded-full border px-4 py-2 text-xs font-bold"
-            style={{
-              borderColor: border,
-              color: muted,
-            }}
+            style={{ borderColor: border, color: muted }}
           >
             ✳ COMMUNITY STARTS HERE
           </div>
 
-          <h1 className="max-w-3xl text-4xl leading-tight font-bold md:text-6xl">
+          <h1 className="max-w-3xl text-4xl leading-tight font-bold sm:text-5xl md:text-6xl">
             Discover events.
             <br />
             <span style={{ color: "#7b9c69" }}>Make a difference.</span>
           </h1>
 
           <p
-            className="mt-5 max-w-2xl text-base leading-8 md:text-lg"
+            className="mt-5 max-w-2xl text-base leading-7 sm:text-lg sm:leading-8"
             style={{ color: muted }}
           >
             Find meaningful community events, connect with people, and take
             small steps towards a kinder world.
           </p>
 
-          <div className="mt-8 flex flex-wrap gap-3">
+          <div className="mt-8 flex flex-col gap-3 sm:flex-row">
             <a
               href="#event-list"
-              className="rounded-full px-6 py-3.5 font-semibold text-white"
+              className="inline-flex items-center justify-center rounded-full px-6 py-3.5 font-semibold text-white transition hover:opacity-90"
               style={{ background: green }}
             >
               Explore Events ↓
             </a>
 
-            <a
+            <Link
               href="/create-event"
-              className="rounded-full border px-6 py-3.5 font-semibold"
+              className="inline-flex items-center justify-center rounded-full border px-6 py-3.5 font-semibold transition hover:opacity-75"
               style={{ borderColor: border }}
             >
               + Create an Event
-            </a>
+            </Link>
           </div>
         </div>
       </section>
 
-      {/* EVENTS SECTION */}
-      <section id="event-list" className="mx-auto max-w-7xl px-5 py-16 lg:px-8">
-        {/* SECTION HEADING */}
-        <div className="mb-9 flex flex-wrap items-end justify-between gap-4">
+      {/* EVENTS */}
+      <section
+        id="event-list"
+        className="mx-auto max-w-7xl px-4 py-12 sm:px-6 sm:py-16 lg:px-8"
+      >
+        <div className="mb-8 flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-end">
           <div>
             <p
               className="text-xs font-bold tracking-[.2em]"
@@ -200,7 +284,7 @@ export default function UpcomingEvents() {
               FIND YOUR PURPOSE
             </p>
 
-            <h2 className="mt-3 text-3xl font-bold md:text-4xl">
+            <h2 className="mt-3 text-3xl font-bold sm:text-4xl">
               Upcoming Community Events
             </h2>
 
@@ -216,19 +300,16 @@ export default function UpcomingEvents() {
               color: dark ? "#c4e2b8" : green,
             }}
           >
-            {events.length} Events Found
+            {events.length} {events.length === 1 ? "Event" : "Events"} Found
           </div>
         </div>
 
-        {/* SEARCH AND FILTER */}
+        {/* SEARCH & FILTER */}
         <div
-          className="mb-9 flex flex-col gap-4 rounded-2xl border p-4 md:flex-row"
-          style={{
-            background: surface,
-            borderColor: border,
-          }}
+          className="mb-8 grid grid-cols-1 gap-4 rounded-2xl border p-4 sm:p-5 md:grid-cols-[1fr_260px]"
+          style={{ background: surface, borderColor: border }}
         >
-          <div className="flex-1">
+          <div className="min-w-0">
             <label
               htmlFor="event-search"
               className="mb-2 block text-sm font-semibold"
@@ -240,9 +321,9 @@ export default function UpcomingEvents() {
               id="event-search"
               type="search"
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(event) => setSearch(event.target.value)}
               placeholder="Search by title, location..."
-              className="w-full rounded-xl border px-4 py-3 outline-none"
+              className="w-full rounded-xl border px-4 py-3 outline-none focus:ring-2 focus:ring-green-700/30"
               style={{
                 background: bg,
                 color: text,
@@ -251,7 +332,7 @@ export default function UpcomingEvents() {
             />
           </div>
 
-          <div className="w-full md:w-64">
+          <div className="min-w-0">
             <label
               htmlFor="event-type"
               className="mb-2 block text-sm font-semibold"
@@ -262,8 +343,8 @@ export default function UpcomingEvents() {
             <select
               id="event-type"
               value={selectedType}
-              onChange={(e) => setSelectedType(e.target.value)}
-              className="w-full rounded-xl border px-4 py-3 outline-none"
+              onChange={(event) => setSelectedType(event.target.value)}
+              className="w-full rounded-xl border px-4 py-3 outline-none focus:ring-2 focus:ring-green-700/30"
               style={{
                 background: bg,
                 color: text,
@@ -279,26 +360,30 @@ export default function UpcomingEvents() {
           </div>
         </div>
 
-        {/* EVENT LIST */}
+        {/* EVENT RESULTS */}
         {loading ? (
-          <div className="py-20 text-center">
-            <p className="text-lg font-semibold">Loading events...</p>
-
+          <div className="py-20 text-center" aria-live="polite">
+            <div
+              className="mx-auto h-10 w-10 animate-spin rounded-full border-4 border-current border-r-transparent"
+              style={{ color: green }}
+              aria-label="Loading"
+            />
+            <p className="mt-5 text-lg font-semibold">Loading events...</p>
             <p className="mt-2 text-sm" style={{ color: muted }}>
               Please wait a moment.
             </p>
           </div>
         ) : error ? (
           <div
-            className="rounded-2xl border p-10 text-center"
-            style={{ borderColor: border }}
+            className="rounded-2xl border p-6 text-center sm:p-10"
+            style={{ background: surface, borderColor: border }}
           >
             <p className="text-red-500">{error}</p>
 
             <button
               type="button"
-              onClick={fetchEvents}
-              className="mt-5 rounded-full px-6 py-3 font-semibold text-white"
+              onClick={() => fetchEvents(true)}
+              className="mt-5 rounded-full px-6 py-3 font-semibold text-white transition hover:opacity-90"
               style={{ background: green }}
             >
               Try Again
@@ -306,13 +391,12 @@ export default function UpcomingEvents() {
           </div>
         ) : filteredEvents.length === 0 ? (
           <div
-            className="rounded-2xl border px-6 py-16 text-center"
-            style={{
-              background: surface,
-              borderColor: border,
-            }}
+            className="rounded-2xl border px-5 py-14 text-center sm:px-6 sm:py-16"
+            style={{ background: surface, borderColor: border }}
           >
-            <p className="text-5xl">🌱</p>
+            <p className="text-5xl" aria-hidden="true">
+              🌱
+            </p>
 
             <h3 className="mt-5 text-2xl font-bold">No Events Found</h3>
 
@@ -323,20 +407,17 @@ export default function UpcomingEvents() {
             </p>
 
             {events.length === 0 ? (
-              <a
+              <Link
                 href="/create-event"
-                className="mt-6 inline-block rounded-full px-6 py-3 font-semibold text-white"
+                className="mt-6 inline-flex rounded-full px-6 py-3 font-semibold text-white"
                 style={{ background: green }}
               >
                 + Create an Event
-              </a>
+              </Link>
             ) : (
               <button
                 type="button"
-                onClick={() => {
-                  setSearch("");
-                  setSelectedType("All");
-                }}
+                onClick={clearFilters}
                 className="mt-6 rounded-full border px-6 py-3 font-semibold"
                 style={{ borderColor: border }}
               >
@@ -346,27 +427,37 @@ export default function UpcomingEvents() {
           </div>
         ) : (
           <>
-            <p className="mb-5 text-sm" style={{ color: muted }}>
-              Showing {filteredEvents.length} of {events.length} events
-            </p>
+            <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+              <p className="text-sm" style={{ color: muted }}>
+                Showing {filteredEvents.length} of {events.length} events
+              </p>
 
-            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+              {(search || selectedType !== "All") && (
+                <button
+                  type="button"
+                  onClick={clearFilters}
+                  className="text-sm font-semibold underline underline-offset-4"
+                  style={{ color: dark ? "#b7d9a8" : green }}
+                >
+                  Clear filters
+                </button>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 sm:gap-6 lg:grid-cols-3">
               {filteredEvents.map((event) => (
                 <article
                   key={event._id}
-                  className="group overflow-hidden rounded-2xl border transition duration-300 hover:-translate-y-1 hover:shadow-xl"
-                  style={{
-                    background: surface,
-                    borderColor: border,
-                  }}
+                  className="group flex min-w-0 flex-col overflow-hidden rounded-2xl border transition duration-300 hover:-translate-y-1 hover:shadow-xl"
+                  style={{ background: surface, borderColor: border }}
                 >
-                  {/* EVENT IMAGE */}
+                  {/* IMAGE */}
                   <div
-                    className="relative h-56 overflow-hidden bg-cover bg-center"
+                    className="relative h-48 overflow-hidden bg-cover bg-center sm:h-56"
                     style={{
-                      backgroundColor: "#e4e8d8",
+                      backgroundColor: dark ? "#304638" : "#e4e8d8",
                       backgroundImage: event.image
-                        ? `url("${event.image}")`
+                        ? `url("${String(event.image).replace(/["\\]/g, "")}")`
                         : "none",
                     }}
                     role="img"
@@ -379,20 +470,17 @@ export default function UpcomingEvents() {
                     )}
 
                     <span
-                      className="absolute top-4 left-4 rounded-full px-4 py-2 text-xs font-bold"
-                      style={{
-                        background: surface,
-                        color: text,
-                      }}
+                      className="absolute left-4 top-4 max-w-[85%] truncate rounded-full px-4 py-2 text-xs font-bold"
+                      style={{ background: surface, color: text }}
                     >
                       {event.type || "Community"}
                     </span>
                   </div>
 
-                  {/* EVENT DETAILS */}
-                  <div className="flex min-h-64 flex-col p-6">
-                    <h3 className="text-xl font-bold transition group-hover:text-green-700">
-                      {event.title}
+                  {/* DETAILS */}
+                  <div className="flex flex-1 flex-col p-5 sm:p-6">
+                    <h3 className="wrap-break-word text-xl font-bold transition group-hover:text-green-700">
+                      {event.title || "Community Event"}
                     </h3>
 
                     <div
@@ -400,36 +488,43 @@ export default function UpcomingEvents() {
                       style={{ color: muted }}
                     >
                       <p className="flex items-start gap-3">
-                        <span>📍</span>
-                        <span>
+                        <span aria-hidden="true">📍</span>
+                        <span className="min-w-0 wrap-break-word">
                           {event.location || "Location not specified"}
                         </span>
                       </p>
 
                       <p className="flex items-start gap-3">
-                        <span>📅</span>
-                        <span>{event.date || "Date not specified"}</span>
+                        <span aria-hidden="true">📅</span>
+                        <span className="min-w-0 wrap-break-word">
+                          {event.date || "Date not specified"}
+                        </span>
                       </p>
                     </div>
 
                     {event.description && (
                       <p
-                        className="mt-5 text-sm leading-7"
-                        style={{ color: muted }}
+                        className="mt-5 wrap-break-word text-sm leading-7"
+                        style={{
+                          color: muted,
+                          display: "-webkit-box",
+                          WebkitBoxOrient: "vertical",
+                          WebkitLineClamp: 4,
+                          overflow: "hidden",
+                        }}
                       >
                         {event.description}
                       </p>
                     )}
 
-                    {/* VIEW DETAILS BUTTON */}
                     <div className="mt-auto pt-6">
-                      <a
+                      <Link
                         href={`/events/${event._id}`}
-                        className="inline-flex items-center justify-center gap-2 rounded-full px-5 py-3 text-sm font-bold text-white transition hover:opacity-90"
+                        className="inline-flex w-full items-center justify-center gap-2 rounded-full px-5 py-3 text-sm font-bold text-white transition hover:opacity-90 sm:w-auto"
                         style={{ background: green }}
                       >
-                        View Details <span>↗</span>
-                      </a>
+                        View Details <span aria-hidden="true">↗</span>
+                      </Link>
                     </div>
                   </div>
                 </article>
@@ -440,16 +535,16 @@ export default function UpcomingEvents() {
       </section>
 
       {/* CALL TO ACTION */}
-      <section className="px-5 pb-20">
+      <section className="px-4 pb-14 sm:px-6 sm:pb-20 lg:px-8">
         <div
-          className="mx-auto max-w-7xl rounded-3xl px-6 py-14 text-center md:px-12"
-          style={{
-            background: dark ? "#283d30" : "#e8eee0",
-          }}
+          className="mx-auto max-w-7xl rounded-3xl px-5 py-12 text-center sm:px-10 sm:py-14 md:px-12"
+          style={{ background: dark ? "#283d30" : "#e8eee0" }}
         >
-          <p className="text-4xl">💚</p>
+          <p className="text-4xl" aria-hidden="true">
+            💚
+          </p>
 
-          <h2 className="mt-5 text-3xl font-bold">
+          <h2 className="mt-5 text-2xl font-bold sm:text-3xl">
             Have an idea to make a difference?
           </h2>
 
@@ -461,26 +556,29 @@ export default function UpcomingEvents() {
             take action.
           </p>
 
-          <a
+          <Link
             href="/create-event"
             className="mt-7 inline-flex rounded-full px-7 py-3.5 font-semibold text-white transition hover:opacity-90"
             style={{ background: green }}
           >
             + Create Your Event
-          </a>
+          </Link>
         </div>
       </section>
 
       {/* FOOTER */}
-      <footer className="border-t px-5 py-8" style={{ borderColor: border }}>
-        <div className="mx-auto flex max-w-7xl flex-col justify-between gap-4 sm:flex-row sm:items-center">
-          <a
+      <footer
+        className="border-t px-4 py-8 sm:px-6 lg:px-8"
+        style={{ borderColor: border }}
+      >
+        <div className="mx-auto flex max-w-7xl flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <Link
             href="/"
             className="text-xl font-extrabold"
             style={{ color: dark ? "#b7d9a8" : green }}
           >
             kindora.
-          </a>
+          </Link>
 
           <p className="text-sm" style={{ color: muted }}>
             Together, we can make good things happen.

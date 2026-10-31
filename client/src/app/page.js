@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useToast } from "@/components/ToastProvider";
 
-// Deployed Render Backend APIs
 const API_URL = "https://kindora-api-vb9y.onrender.com/api/events";
 const NEWSLETTER_API =
   "https://kindora-api-vb9y.onrender.com/api/newsletter/subscribe";
@@ -42,25 +42,27 @@ const emptyForm = {
 };
 
 export default function Home() {
+  const { success, error, warning } = useToast();
+
   const [dark, setDark] = useState(false);
   const [events, setEvents] = useState([]);
   const [eventsLoading, setEventsLoading] = useState(true);
   const [eventsError, setEventsError] = useState("");
+
   const [editingEvent, setEditingEvent] = useState(null);
   const [editForm, setEditForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
-  const [actionError, setActionError] = useState("");
+  const [deletingId, setDeletingId] = useState(null);
 
   const [user, setUser] = useState(null);
   const [authChecked, setAuthChecked] = useState(false);
 
-  // Newsletter states
   const [newsletterEmail, setNewsletterEmail] = useState("");
   const [newsletterLoading, setNewsletterLoading] = useState(false);
-  const [newsletterMessage, setNewsletterMessage] = useState("");
-  const [newsletterError, setNewsletterError] = useState("");
 
-  // Check login status
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  // AUTHENTICATION
   useEffect(() => {
     function loadUser() {
       try {
@@ -72,8 +74,8 @@ export default function Home() {
         } else {
           setUser(null);
         }
-      } catch (error) {
-        console.error("Could not read login information:", error);
+      } catch (err) {
+        console.error("Could not read login information:", err);
         setUser(null);
       }
 
@@ -91,34 +93,42 @@ export default function Home() {
     };
   }, []);
 
-  // Logout
+  // LOGOUT
   function handleLogout() {
     sessionStorage.removeItem("kindora_token");
     sessionStorage.removeItem("kindora_user");
 
     setUser(null);
-    window.dispatchEvent(new Event("kindora-auth-change"));
+    setMobileMenuOpen(false);
 
+    window.dispatchEvent(new Event("kindora-auth-change"));
     window.location.href = "/";
   }
 
-  // Fetch Events
+  // FETCH EVENTS
   async function fetchEvents() {
-    try {
-      setEventsLoading(true);
-      setEventsError("");
+    setEventsLoading(true);
+    setEventsError("");
 
+    try {
       const response = await fetch(API_URL);
       const data = await response.json();
 
       if (!response.ok || !data.success) {
-        throw new Error(data.message || "Could not load events");
+        throw new Error(data.message || "Could not load events.");
       }
 
-      setEvents(data.events || []);
-    } catch (error) {
-      console.error("Events fetch error:", error);
-      setEventsError("Unable to load events. Please try again.");
+      setEvents(Array.isArray(data.events) ? data.events : []);
+    } catch (err) {
+      console.error("Events fetch error:", err);
+
+      setEventsError(
+        err.message === "Failed to fetch"
+          ? "Cannot connect to the server. Please check your connection and try again."
+          : err.message || "Unable to load events.",
+      );
+
+      error("Unable to load events. Please try again.");
     } finally {
       setEventsLoading(false);
     }
@@ -126,19 +136,18 @@ export default function Home() {
 
   useEffect(() => {
     fetchEvents();
+    // fetchEvents is intentionally called on initial page load.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Newsletter Subscription
+  // NEWSLETTER
   async function handleNewsletterSubmit(e) {
     e.preventDefault();
-
-    setNewsletterMessage("");
-    setNewsletterError("");
 
     const cleanEmail = newsletterEmail.trim().toLowerCase();
 
     if (!cleanEmail) {
-      setNewsletterError("Please enter your email address.");
+      warning("Please enter your email address.");
       return;
     }
 
@@ -150,9 +159,7 @@ export default function Home() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          email: cleanEmail,
-        }),
+        body: JSON.stringify({ email: cleanEmail }),
       });
 
       const data = await response.json();
@@ -161,50 +168,44 @@ export default function Home() {
         throw new Error(data.message || "Subscription failed.");
       }
 
-      setNewsletterMessage(
-        data.message ||
-          "Successfully subscribed! Thank you for joining Kindora.",
-      );
-
+      success(data.message || "Successfully subscribed! Welcome to Kindora.");
       setNewsletterEmail("");
-    } catch (error) {
-      console.error("Newsletter subscription error:", error);
+    } catch (err) {
+      console.error("Newsletter subscription error:", err);
 
-      setNewsletterError(
-        error.message === "Failed to fetch"
+      error(
+        err.message === "Failed to fetch"
           ? "Cannot connect to the server. Please try again later."
-          : error.message,
+          : err.message || "Newsletter subscription failed.",
       );
     } finally {
       setNewsletterLoading(false);
     }
   }
 
-  // Open Edit Modal
+  // OPEN EDIT MODAL
   function handleEditClick(event) {
     setEditingEvent(event);
-    setActionError("");
 
     setEditForm({
       title: event.title || "",
       type: event.type || "",
       location: event.location || "",
-      date: event.date || "",
+      date: event.date ? String(event.date).slice(0, 10) : "",
       image: event.image || "",
       description: event.description || "",
     });
   }
 
-  // Close Edit Modal
+  // CLOSE EDIT MODAL
   function handleCloseEdit() {
     if (saving) return;
 
     setEditingEvent(null);
     setEditForm(emptyForm);
-    setActionError("");
   }
 
-  // Handle Input Changes
+  // EDIT INPUT
   function handleEditChange(e) {
     const { name, value } = e.target;
 
@@ -214,18 +215,17 @@ export default function Home() {
     }));
   }
 
-  // Update Event
+  // UPDATE EVENT
   async function handleUpdate(e) {
     e.preventDefault();
 
     if (!editingEvent?._id) {
-      setActionError("Event ID is missing.");
+      error("Event ID is missing.");
       return;
     }
 
     try {
       setSaving(true);
-      setActionError("");
 
       const response = await fetch(`${API_URL}/${editingEvent._id}`, {
         method: "PUT",
@@ -238,7 +238,7 @@ export default function Home() {
       const data = await response.json();
 
       if (!response.ok || !data.success) {
-        throw new Error(data.message || "Could not update event");
+        throw new Error(data.message || "Could not update event.");
       }
 
       setEvents((previousEvents) =>
@@ -250,19 +250,19 @@ export default function Home() {
       setEditingEvent(null);
       setEditForm(emptyForm);
 
-      alert("Event updated successfully!");
-    } catch (error) {
-      console.error("Update error:", error);
-      setActionError(error.message || "Update failed.");
+      success("Event updated successfully!");
+    } catch (err) {
+      console.error("Update error:", err);
+      error(err.message || "Event update failed.");
     } finally {
       setSaving(false);
     }
   }
 
-  // Delete Event
+  // DELETE EVENT
   async function handleDelete(event) {
     if (!event._id) {
-      alert("Event ID is missing.");
+      error("Event ID is missing.");
       return;
     }
 
@@ -273,6 +273,8 @@ export default function Home() {
     if (!confirmed) return;
 
     try {
+      setDeletingId(event._id);
+
       const response = await fetch(`${API_URL}/${event._id}`, {
         method: "DELETE",
       });
@@ -280,27 +282,36 @@ export default function Home() {
       const data = await response.json();
 
       if (!response.ok || !data.success) {
-        throw new Error(data.message || "Could not delete event");
+        throw new Error(data.message || "Could not delete event.");
       }
 
       setEvents((previousEvents) =>
         previousEvents.filter((item) => item._id !== event._id),
       );
 
-      alert("Event deleted successfully!");
-    } catch (error) {
-      console.error("Delete error:", error);
-      alert(error.message || "Delete failed.");
+      success("Event deleted successfully!");
+    } catch (err) {
+      console.error("Delete error:", err);
+      error(err.message || "Delete failed.");
+    } finally {
+      setDeletingId(null);
     }
   }
 
-  // Theme Colors
+  // THEME COLORS
   const bg = dark ? "#14231c" : "#faf9f5";
   const surface = dark ? "#1e3027" : "#ffffff";
   const text = dark ? "#f1f5ed" : "#20392c";
   const muted = dark ? "#b8c8bc" : "#68776c";
   const border = dark ? "#35493c" : "#e6e9df";
   const green = "#315b43";
+
+  const navLinks = [
+    { href: "/", label: "Home" },
+    { href: "/upcoming-events", label: "Upcoming Events" },
+    { href: "#about", label: "About Us" },
+    { href: "/create-event", label: "Create Event" },
+  ];
 
   return (
     <main
@@ -317,10 +328,12 @@ export default function Home() {
         className="sticky top-0 z-40"
         style={{
           borderBottom: `1px solid ${border}`,
-          background: bg,
+          background: dark ? "rgba(20,35,28,.94)" : "rgba(250,249,245,.94)",
+          backdropFilter: "blur(16px)",
+          WebkitBackdropFilter: "blur(16px)",
         }}
       >
-        <nav className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-5 py-4 lg:px-8">
+        <nav className="relative mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-4 sm:px-6 lg:px-8">
           <Link
             href="/"
             className="shrink-0 text-2xl font-extrabold tracking-tight"
@@ -329,42 +342,45 @@ export default function Home() {
             kindora<span style={{ color: "#d28b54" }}>.</span>
           </Link>
 
-          <div className="hidden items-center gap-7 text-sm font-medium md:flex">
-            <Link href="/" className="transition hover:opacity-70">
-              Home
-            </Link>
-
-            <Link
-              href="/upcoming-events"
-              className="transition hover:opacity-70"
-            >
-              Upcoming Events
-            </Link>
-
-            <a href="#about" className="transition hover:opacity-70">
-              About Us
-            </a>
-
-            <Link href="/create-event" className="transition hover:opacity-70">
-              Create Event
-            </Link>
+          {/* DESKTOP NAVIGATION */}
+          <div className="hidden items-center gap-7 text-sm font-medium lg:flex">
+            {navLinks.map((item) =>
+              item.href.startsWith("#") ? (
+                <a
+                  key={item.label}
+                  href={item.href}
+                  className="transition hover:opacity-60"
+                >
+                  {item.label}
+                </a>
+              ) : (
+                <Link
+                  key={item.label}
+                  href={item.href}
+                  className="transition hover:opacity-60"
+                >
+                  {item.label}
+                </Link>
+              ),
+            )}
           </div>
 
+          {/* NAVBAR ACTIONS */}
           <div className="flex shrink-0 items-center gap-2">
             <button
               type="button"
               onClick={() => setDark((previous) => !previous)}
               aria-label="Toggle color theme"
-              className="rounded-full border px-3 py-2 text-sm"
+              className="flex h-10 w-10 items-center justify-center rounded-full border text-sm"
               style={{ borderColor: border }}
             >
               {dark ? "☀️" : "🌙"}
             </button>
 
             {authChecked && user ? (
-              <div className="flex items-center gap-2">
+              <div className="hidden items-center gap-2 sm:flex">
                 <span
-                  className="hidden max-w-28 truncate text-sm font-semibold sm:inline"
+                  className="max-w-28 truncate text-sm font-semibold"
                   title={user.name || "User"}
                 >
                   Hi, {user.name || "User"}
@@ -373,17 +389,14 @@ export default function Home() {
                 <button
                   type="button"
                   onClick={handleLogout}
-                  className="rounded-full border px-4 py-2.5 text-sm font-semibold transition hover:opacity-70"
-                  style={{
-                    borderColor: border,
-                    color: text,
-                  }}
+                  className="rounded-full border px-4 py-2.5 text-sm font-semibold"
+                  style={{ borderColor: border }}
                 >
                   Logout
                 </button>
               </div>
             ) : authChecked ? (
-              <div className="flex items-center gap-2">
+              <div className="hidden items-center gap-2 sm:flex">
                 <Link
                   href="/login"
                   className="rounded-full px-4 py-2.5 text-sm font-semibold text-white"
@@ -394,7 +407,7 @@ export default function Home() {
 
                 <Link
                   href="/register"
-                  className="hidden rounded-full border px-4 py-2.5 text-sm font-semibold sm:inline-block"
+                  className="rounded-full border px-4 py-2.5 text-sm font-semibold"
                   style={{ borderColor: border }}
                 >
                   Sign Up
@@ -402,16 +415,99 @@ export default function Home() {
               </div>
             ) : (
               <div
-                className="h-10 w-20 rounded-full"
+                className="hidden h-10 w-20 rounded-full sm:block"
                 style={{ background: border }}
               />
             )}
+
+            {/* MOBILE MENU BUTTON */}
+            <button
+              type="button"
+              onClick={() => setMobileMenuOpen((previous) => !previous)}
+              className="flex h-10 w-10 items-center justify-center rounded-full border text-xl lg:hidden"
+              style={{ borderColor: border }}
+              aria-label="Toggle navigation menu"
+              aria-expanded={mobileMenuOpen}
+            >
+              {mobileMenuOpen ? "✕" : "☰"}
+            </button>
           </div>
+
+          {/* MOBILE DROPDOWN */}
+          {mobileMenuOpen && (
+            <div
+              className="absolute top-full right-3 left-3 mt-2 rounded-2xl border p-4 shadow-xl lg:hidden"
+              style={{ background: surface, borderColor: border }}
+            >
+              <div className="flex flex-col gap-1">
+                {navLinks.map((item) =>
+                  item.href.startsWith("#") ? (
+                    <a
+                      key={item.label}
+                      href={item.href}
+                      onClick={() => setMobileMenuOpen(false)}
+                      className="rounded-xl px-4 py-3 text-sm font-semibold hover:bg-black/5"
+                    >
+                      {item.label}
+                    </a>
+                  ) : (
+                    <Link
+                      key={item.label}
+                      href={item.href}
+                      onClick={() => setMobileMenuOpen(false)}
+                      className="rounded-xl px-4 py-3 text-sm font-semibold hover:bg-black/5"
+                    >
+                      {item.label}
+                    </Link>
+                  ),
+                )}
+
+                <div
+                  className="my-2 border-t"
+                  style={{ borderColor: border }}
+                />
+
+                {authChecked && user ? (
+                  <>
+                    <p className="px-4 py-2 text-sm" style={{ color: muted }}>
+                      Signed in as <strong>{user.name || "User"}</strong>
+                    </p>
+
+                    <button
+                      type="button"
+                      onClick={handleLogout}
+                      className="rounded-xl px-4 py-3 text-left text-sm font-semibold text-red-500"
+                    >
+                      Logout
+                    </button>
+                  </>
+                ) : authChecked ? (
+                  <>
+                    <Link
+                      href="/login"
+                      onClick={() => setMobileMenuOpen(false)}
+                      className="rounded-xl px-4 py-3 text-sm font-semibold"
+                    >
+                      Login ↗
+                    </Link>
+
+                    <Link
+                      href="/register"
+                      onClick={() => setMobileMenuOpen(false)}
+                      className="rounded-xl px-4 py-3 text-sm font-semibold"
+                    >
+                      Sign Up
+                    </Link>
+                  </>
+                ) : null}
+              </div>
+            </div>
+          )}
         </nav>
       </header>
 
       {/* HERO */}
-      <section className="mx-auto grid max-w-7xl items-center gap-10 px-5 py-16 md:grid-cols-2 md:py-24 lg:px-8">
+      <section className="mx-auto grid max-w-7xl items-center gap-10 px-4 py-14 sm:px-6 sm:py-16 md:grid-cols-2 md:py-24 lg:px-8">
         <div>
           <div
             className="mb-6 inline-flex items-center gap-2 rounded-full border px-4 py-2 text-xs font-semibold"
@@ -420,24 +516,24 @@ export default function Home() {
             <span>✳</span> SMALL ACTS. BIG CHANGE.
           </div>
 
-          <h1 className="text-5xl leading-tight font-bold tracking-tight md:text-6xl lg:text-7xl">
+          <h1 className="text-4xl leading-tight font-bold tracking-tight sm:text-5xl md:text-6xl lg:text-7xl">
             A little good
             <br />
             goes a <span style={{ color: "#7b9c69" }}>long way.</span>
           </h1>
 
           <p
-            className="mt-6 max-w-lg text-base leading-8"
+            className="mt-6 max-w-lg text-sm leading-7 sm:text-base sm:leading-8"
             style={{ color: muted }}
           >
             Good things happen when we come together. Discover local community
             events, lend a hand, and help build a kinder world.
           </p>
 
-          <div className="mt-8 flex flex-wrap gap-3">
+          <div className="mt-8 flex flex-col gap-3 min-[420px]:flex-row">
             <a
               href="#upcoming"
-              className="rounded-full px-6 py-3.5 font-semibold text-white transition hover:opacity-90"
+              className="rounded-full px-6 py-3.5 text-center font-semibold text-white transition hover:opacity-90"
               style={{ background: green }}
             >
               Explore events ↗
@@ -445,14 +541,14 @@ export default function Home() {
 
             <Link
               href="/create-event"
-              className="rounded-full border px-6 py-3.5 font-semibold transition hover:opacity-70"
+              className="rounded-full border px-6 py-3.5 text-center font-semibold transition hover:opacity-70"
               style={{ borderColor: border }}
             >
               + Create an event
             </Link>
           </div>
 
-          <div className="mt-10 flex items-center gap-3">
+          <div className="mt-10 flex flex-wrap items-center gap-3">
             <div className="flex -space-x-2">
               {["🌿", "💚", "🌼", "🤝"].map((item, index) => (
                 <span
@@ -478,13 +574,14 @@ export default function Home() {
           </div>
         </div>
 
-        <div className="relative">
+        {/* HERO IMAGE */}
+        <div className="relative mx-auto w-full max-w-xl">
           <div
-            className="overflow-hidden rounded-4xl p-3"
+            className="overflow-hidden rounded-3xl p-2 sm:rounded-4xl sm:p-3"
             style={{ background: dark ? "#283d30" : "#e7ecdf" }}
           >
             <div
-              className="min-h-87.5 overflow-hidden rounded-3xl bg-cover bg-center md:min-h-122.5"
+              className="min-h-72 overflow-hidden rounded-2xl bg-cover bg-center sm:min-h-96 md:min-h-122.5"
               role="img"
               aria-label="Volunteers working together"
               style={{
@@ -495,11 +592,13 @@ export default function Home() {
           </div>
 
           <div
-            className="absolute right-0 bottom-7 max-w-57.5 rounded-2xl p-4 shadow-xl"
+            className="absolute right-2 bottom-5 max-w-52 rounded-2xl p-3 shadow-xl sm:right-0 sm:bottom-7 sm:max-w-56 sm:p-4"
             style={{ background: surface }}
           >
             <p className="text-2xl">🌍</p>
-            <p className="mt-2 font-bold">Change starts locally.</p>
+            <p className="mt-2 text-sm font-bold sm:text-base">
+              Change starts locally.
+            </p>
             <p className="mt-1 text-xs leading-5" style={{ color: muted }}>
               One event. One community. A better tomorrow.
             </p>
@@ -510,7 +609,7 @@ export default function Home() {
       {/* FEATURES */}
       <section
         id="about"
-        className="px-5 py-16 md:py-20"
+        className="px-4 py-16 sm:px-6 md:py-20"
         style={{ background: dark ? "#192920" : "#f0f2e9" }}
       >
         <div className="mx-auto max-w-7xl">
@@ -522,21 +621,24 @@ export default function Home() {
               THE KINDORA WAY
             </p>
 
-            <h2 className="mt-3 text-3xl font-bold md:text-4xl">
+            <h2 className="mt-3 text-3xl font-bold sm:text-4xl">
               Good intentions, real action.
             </h2>
 
-            <p className="mt-3 leading-7" style={{ color: muted }}>
+            <p
+              className="mt-3 text-sm leading-7 sm:text-base"
+              style={{ color: muted }}
+            >
               Making a difference should feel simple. Here is how you can get
               involved.
             </p>
           </div>
 
-          <div className="grid gap-5 md:grid-cols-3">
+          <div className="grid gap-5 sm:grid-cols-2 md:grid-cols-3">
             {features.map((feature) => (
               <article
                 key={feature.number}
-                className="rounded-2xl border p-7"
+                className="rounded-2xl border p-6 sm:p-7"
                 style={{ background: surface, borderColor: border }}
               >
                 <div className="flex items-center justify-between">
@@ -548,7 +650,10 @@ export default function Home() {
 
                 <h3 className="mt-7 text-xl font-bold">{feature.title}</h3>
 
-                <p className="mt-3 leading-7" style={{ color: muted }}>
+                <p
+                  className="mt-3 text-sm leading-7 sm:text-base"
+                  style={{ color: muted }}
+                >
                   {feature.description}
                 </p>
               </article>
@@ -558,8 +663,11 @@ export default function Home() {
       </section>
 
       {/* UPCOMING EVENTS */}
-      <section id="upcoming" className="mx-auto max-w-7xl px-5 py-20 lg:px-8">
-        <div className="flex flex-wrap items-end justify-between gap-4">
+      <section
+        id="upcoming"
+        className="mx-auto max-w-7xl px-4 py-16 sm:px-6 md:py-20 lg:px-8"
+      >
+        <div className="flex flex-col items-start justify-between gap-5 sm:flex-row sm:items-end">
           <div>
             <p
               className="text-xs font-bold tracking-[.2em]"
@@ -568,11 +676,11 @@ export default function Home() {
               MAKE IT COUNT
             </p>
 
-            <h2 className="mt-3 text-3xl font-bold md:text-4xl">
+            <h2 className="mt-3 text-3xl font-bold sm:text-4xl">
               Find your next good thing.
             </h2>
 
-            <p className="mt-3" style={{ color: muted }}>
+            <p className="mt-3 text-sm sm:text-base" style={{ color: muted }}>
               Small steps can make a world of difference.
             </p>
           </div>
@@ -588,23 +696,38 @@ export default function Home() {
 
         <div className="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {eventsLoading ? (
-            <p
-              className="col-span-full py-10 text-center"
-              style={{ color: muted }}
+            <div
+              className="col-span-full rounded-2xl border px-6 py-12 text-center"
+              style={{ background: surface, borderColor: border }}
+              role="status"
             >
-              Loading events...
-            </p>
+              <p className="text-lg font-semibold">Loading events...</p>
+              <p className="mt-2 text-sm" style={{ color: muted }}>
+                Please wait while we fetch community events.
+              </p>
+            </div>
           ) : eventsError ? (
-            <div className="col-span-full py-10 text-center">
-              <p className="text-red-500">{eventsError}</p>
+            <div
+              className="col-span-full rounded-2xl border px-6 py-12 text-center"
+              style={{ background: surface, borderColor: border }}
+              role="alert"
+            >
+              <p className="text-4xl">⚠️</p>
+              <h3 className="mt-4 text-xl font-bold">Could not load events</h3>
+              <p
+                className="mx-auto mt-2 max-w-xl wrap-break-word text-sm"
+                style={{ color: muted }}
+              >
+                {eventsError}
+              </p>
 
               <button
                 type="button"
                 onClick={fetchEvents}
-                className="mt-4 rounded-full border px-5 py-2 text-sm"
-                style={{ borderColor: border }}
+                className="mt-5 rounded-full px-6 py-3 font-semibold text-white disabled:opacity-60"
+                style={{ background: green }}
               >
-                Try again
+                Try again ↻
               </button>
             </div>
           ) : events.length === 0 ? (
@@ -618,7 +741,7 @@ export default function Home() {
                 No events available yet
               </h3>
 
-              <p className="mt-2" style={{ color: muted }}>
+              <p className="mt-2 text-sm" style={{ color: muted }}>
                 Be the first to create a community event!
               </p>
 
@@ -629,16 +752,25 @@ export default function Home() {
               >
                 + Create an event
               </Link>
+
+              <button
+                type="button"
+                onClick={fetchEvents}
+                className="mx-auto mt-4 block text-sm underline"
+                style={{ color: muted }}
+              >
+                Refresh events
+              </button>
             </div>
           ) : (
             events.slice(0, 3).map((event) => (
               <article
                 key={event._id || event.title}
-                className="overflow-hidden rounded-2xl border"
+                className="flex min-w-0 flex-col overflow-hidden rounded-2xl border"
                 style={{ background: surface, borderColor: border }}
               >
                 <div
-                  className="h-52 bg-cover bg-center"
+                  className="h-48 bg-cover bg-center sm:h-52"
                   role="img"
                   aria-label={event.title || "Community event"}
                   style={{
@@ -649,7 +781,7 @@ export default function Home() {
                   }}
                 />
 
-                <div className="flex min-h-60 flex-col p-5">
+                <div className="flex flex-1 flex-col p-5">
                   <span
                     className="w-fit rounded-full px-3 py-1 text-xs font-semibold"
                     style={{
@@ -660,19 +792,24 @@ export default function Home() {
                     {event.type || "Community"}
                   </span>
 
-                  <h3 className="mt-4 text-lg font-bold">{event.title}</h3>
+                  <h3 className="mt-4 wrap-break-word text-lg font-bold">
+                    {event.title}
+                  </h3>
 
-                  <p className="mt-2 text-sm" style={{ color: muted }}>
-                    📍 {event.location}
+                  <p
+                    className="mt-2 wrap-break-word text-sm"
+                    style={{ color: muted }}
+                  >
+                    📍 {event.location || "Location not specified"}
                   </p>
 
                   <p className="mt-2 text-sm" style={{ color: muted }}>
-                    📅 {event.date}
+                    📅 {event.date || "Date not specified"}
                   </p>
 
                   {event.description && (
                     <p
-                      className="mt-3 text-sm leading-6"
+                      className="mt-3 line-clamp-3 text-sm leading-6"
                       style={{ color: muted }}
                     >
                       {event.description}
@@ -691,7 +828,7 @@ export default function Home() {
                     <button
                       type="button"
                       onClick={() => handleEditClick(event)}
-                      className="rounded-full border px-4 py-2 text-sm font-semibold transition hover:opacity-70"
+                      className="rounded-full border px-3 py-2 text-xs font-semibold transition hover:opacity-70 sm:px-4 sm:text-sm"
                       style={{ borderColor: border }}
                     >
                       ✏️ Edit
@@ -700,9 +837,10 @@ export default function Home() {
                     <button
                       type="button"
                       onClick={() => handleDelete(event)}
-                      className="rounded-full border border-red-300 px-4 py-2 text-sm font-semibold text-red-500 transition hover:bg-red-50"
+                      disabled={deletingId === event._id}
+                      className="rounded-full border border-red-300 px-3 py-2 text-xs font-semibold text-red-500 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60 sm:px-4 sm:text-sm"
                     >
-                      🗑 Delete
+                      {deletingId === event._id ? "Deleting..." : "🗑 Delete"}
                     </button>
                   </div>
                 </div>
@@ -725,21 +863,27 @@ export default function Home() {
       {/* EDIT EVENT MODAL */}
       {editingEvent && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/60 p-4"
+          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 p-3 sm:items-center sm:p-5"
           onMouseDown={(e) => {
             if (e.target === e.currentTarget) handleCloseEdit();
           }}
         >
           <div
-            className="my-8 w-full max-w-xl rounded-3xl p-6 shadow-2xl"
-            style={{ background: surface, color: text }}
+            className="my-3 w-full max-w-xl rounded-2xl p-5 shadow-2xl sm:my-8 sm:rounded-3xl sm:p-6"
+            style={{
+              background: surface,
+              color: text,
+              border: `1px solid ${border}`,
+            }}
           >
-            <div className="mb-6 flex items-center justify-between">
+            <div className="mb-6 flex items-center justify-between gap-3">
               <div>
                 <p className="text-xs font-bold tracking-widest text-green-600">
                   UPDATE EVENT
                 </p>
-                <h2 className="mt-2 text-2xl font-bold">Edit your event</h2>
+                <h2 className="mt-2 text-xl font-bold sm:text-2xl">
+                  Edit your event
+                </h2>
               </div>
 
               <button
@@ -748,40 +892,79 @@ export default function Home() {
                 disabled={saving}
                 className="rounded-full border px-3 py-2"
                 style={{ borderColor: border }}
+                aria-label="Close edit form"
               >
                 ✕
               </button>
             </div>
 
             <form onSubmit={handleUpdate} className="space-y-4">
-              <div>
-                <label className="mb-2 block text-sm font-semibold">
-                  Event Title *
-                </label>
+              {[
+                {
+                  label: "Event Title *",
+                  name: "title",
+                  placeholder: "Enter event title",
+                  required: true,
+                },
+                {
+                  label: "Location *",
+                  name: "location",
+                  placeholder: "Enter event location",
+                  required: true,
+                },
+                {
+                  label: "Image URL",
+                  name: "image",
+                  placeholder: "https://example.com/image.jpg",
+                  type: "url",
+                },
+              ].map((field) => (
+                <div key={field.name}>
+                  <label
+                    htmlFor={`edit-${field.name}`}
+                    className="mb-2 block text-sm font-semibold"
+                  >
+                    {field.label}
+                  </label>
 
-                <input
-                  required
-                  name="title"
-                  value={editForm.title}
-                  onChange={handleEditChange}
-                  placeholder="Enter event title"
-                  className="w-full rounded-xl border px-4 py-3 outline-none"
-                  style={{ background: bg, color: text, borderColor: border }}
-                />
-              </div>
+                  <input
+                    id={`edit-${field.name}`}
+                    required={field.required}
+                    type={field.type || "text"}
+                    name={field.name}
+                    value={editForm[field.name]}
+                    onChange={handleEditChange}
+                    placeholder={field.placeholder}
+                    className="w-full min-w-0 rounded-xl border px-4 py-3 outline-none focus:ring-2 focus:ring-green-600"
+                    style={{
+                      background: bg,
+                      color: text,
+                      borderColor: border,
+                    }}
+                  />
+                </div>
+              ))}
 
               <div>
-                <label className="mb-2 block text-sm font-semibold">
+                <label
+                  htmlFor="edit-type"
+                  className="mb-2 block text-sm font-semibold"
+                >
                   Event Type *
                 </label>
 
                 <select
+                  id="edit-type"
                   required
                   name="type"
                   value={editForm.type}
                   onChange={handleEditChange}
                   className="w-full rounded-xl border px-4 py-3 outline-none"
-                  style={{ background: bg, color: text, borderColor: border }}
+                  style={{
+                    background: bg,
+                    color: text,
+                    borderColor: border,
+                  }}
                 >
                   <option value="">Select type</option>
                   <option value="Donation">Donation</option>
@@ -794,81 +977,59 @@ export default function Home() {
               </div>
 
               <div>
-                <label className="mb-2 block text-sm font-semibold">
-                  Location *
-                </label>
-
-                <input
-                  required
-                  name="location"
-                  value={editForm.location}
-                  onChange={handleEditChange}
-                  placeholder="Enter event location"
-                  className="w-full rounded-xl border px-4 py-3 outline-none"
-                  style={{ background: bg, color: text, borderColor: border }}
-                />
-              </div>
-
-              <div>
-                <label className="mb-2 block text-sm font-semibold">
+                <label
+                  htmlFor="edit-date"
+                  className="mb-2 block text-sm font-semibold"
+                >
                   Event Date *
                 </label>
 
                 <input
+                  id="edit-date"
                   required
                   type="date"
                   name="date"
                   value={editForm.date}
                   onChange={handleEditChange}
                   className="w-full rounded-xl border px-4 py-3 outline-none"
-                  style={{ background: bg, color: text, borderColor: border }}
+                  style={{
+                    background: bg,
+                    color: text,
+                    borderColor: border,
+                  }}
                 />
               </div>
 
               <div>
-                <label className="mb-2 block text-sm font-semibold">
-                  Image URL
-                </label>
-
-                <input
-                  type="url"
-                  name="image"
-                  value={editForm.image}
-                  onChange={handleEditChange}
-                  placeholder="https://example.com/image.jpg"
-                  className="w-full rounded-xl border px-4 py-3 outline-none"
-                  style={{ background: bg, color: text, borderColor: border }}
-                />
-              </div>
-
-              <div>
-                <label className="mb-2 block text-sm font-semibold">
+                <label
+                  htmlFor="edit-description"
+                  className="mb-2 block text-sm font-semibold"
+                >
                   Description
                 </label>
 
                 <textarea
+                  id="edit-description"
                   rows={3}
                   name="description"
                   value={editForm.description}
                   onChange={handleEditChange}
                   placeholder="Write event description..."
-                  className="w-full rounded-xl border px-4 py-3 outline-none"
-                  style={{ background: bg, color: text, borderColor: border }}
+                  className="w-full resize-y rounded-xl border px-4 py-3 outline-none"
+                  style={{
+                    background: bg,
+                    color: text,
+                    borderColor: border,
+                  }}
                 />
               </div>
 
-              {actionError && (
-                <p className="rounded-xl bg-red-50 p-3 text-sm text-red-600">
-                  {actionError}
-                </p>
-              )}
-
-              <div className="flex flex-wrap justify-end gap-3 pt-2">
+              <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row sm:justify-end">
                 <button
                   type="button"
                   onClick={handleCloseEdit}
                   disabled={saving}
-                  className="rounded-full border px-5 py-3 font-semibold"
+                  className="rounded-full border px-5 py-3 font-semibold disabled:opacity-60"
                   style={{ borderColor: border }}
                 >
                   Cancel
@@ -889,19 +1050,19 @@ export default function Home() {
       )}
 
       {/* NEWSLETTER */}
-      <section className="px-5 pb-20">
+      <section className="px-4 pb-16 sm:px-6 sm:pb-20">
         <div
-          className="mx-auto max-w-7xl overflow-hidden rounded-3xl px-6 py-12 text-center md:px-12 md:py-16"
+          className="mx-auto max-w-7xl overflow-hidden rounded-3xl px-5 py-12 text-center sm:px-12 sm:py-16"
           style={{ background: dark ? "#283d30" : "#e8eee0" }}
         >
           <p className="text-3xl">✉️</p>
 
-          <h2 className="mt-4 text-3xl font-bold">
+          <h2 className="mt-4 text-2xl font-bold sm:text-3xl">
             A little good in your inbox.
           </h2>
 
           <p
-            className="mx-auto mt-3 max-w-xl leading-7"
+            className="mx-auto mt-3 max-w-xl text-sm leading-7 sm:text-base"
             style={{ color: muted }}
           >
             Get updates on upcoming community events and new ways to give back.
@@ -916,16 +1077,12 @@ export default function Home() {
               required
               maxLength={254}
               value={newsletterEmail}
-              onChange={(e) => {
-                setNewsletterEmail(e.target.value);
-                setNewsletterMessage("");
-                setNewsletterError("");
-              }}
+              onChange={(e) => setNewsletterEmail(e.target.value)}
               placeholder="Your email address"
               aria-label="Your email address"
               autoComplete="email"
               disabled={newsletterLoading}
-              className="min-w-0 flex-1 rounded-full border px-5 py-3 outline-none disabled:opacity-60"
+              className="min-w-0 flex-1 rounded-full border px-5 py-3 outline-none focus:ring-2 focus:ring-green-600 disabled:opacity-60"
               style={{
                 background: surface,
                 color: text,
@@ -943,34 +1100,17 @@ export default function Home() {
             </button>
           </form>
 
-          {newsletterMessage && (
-            <p
-              role="status"
-              className="mx-auto mt-4 max-w-lg rounded-xl bg-green-100 px-4 py-3 text-sm font-medium text-green-800"
-            >
-              ✓ {newsletterMessage}
-            </p>
-          )}
-
-          {newsletterError && (
-            <p
-              role="alert"
-              className="mx-auto mt-4 max-w-lg rounded-xl bg-red-100 px-4 py-3 text-sm font-medium text-red-700"
-            >
-              {newsletterError}
-            </p>
-          )}
-
-          {!newsletterMessage && !newsletterError && (
-            <p className="mt-3 text-xs" style={{ color: muted }}>
-              Join the Kindora community and stay connected.
-            </p>
-          )}
+          <p className="mt-3 text-xs" style={{ color: muted }}>
+            Join the Kindora community and stay connected.
+          </p>
         </div>
       </section>
 
       {/* FOOTER */}
-      <footer className="border-t px-5 py-8" style={{ borderColor: border }}>
+      <footer
+        className="border-t px-4 py-8 sm:px-6"
+        style={{ borderColor: border }}
+      >
         <div className="mx-auto flex max-w-7xl flex-col justify-between gap-4 sm:flex-row sm:items-center">
           <Link
             href="/"

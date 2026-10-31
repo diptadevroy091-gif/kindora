@@ -4,8 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
-// Deployed Render Backend API
-const API_URL = "https://kindora-api-vb9y.onrender.com/api/auth/register";
+const API_BASE = "https://kindora-api-vb9y.onrender.com";
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -21,15 +20,15 @@ export default function RegisterPage() {
   const [success, setSuccess] = useState("");
 
   function handleChange(e) {
-    setForm({
-      ...form,
-      [e.target.name]: e.target.value,
-    });
+    setForm({ ...form, [e.target.name]: e.target.value });
+  }
+
+  function startOAuth(provider) {
+    window.location.assign(`${API_BASE}/api/auth/${provider}`);
   }
 
   async function handleSubmit(e) {
     e.preventDefault();
-
     setError("");
     setSuccess("");
 
@@ -41,11 +40,9 @@ export default function RegisterPage() {
     setLoading(true);
 
     try {
-      const response = await fetch(API_URL, {
+      const response = await fetch(`${API_BASE}/api/auth/register`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),
       });
 
@@ -55,21 +52,13 @@ export default function RegisterPage() {
         throw new Error(data.message || "Registration failed.");
       }
 
-      // Save authentication information
       sessionStorage.setItem("kindora_token", data.token);
       sessionStorage.setItem("kindora_user", JSON.stringify(data.user));
-
-      // Notify other components about login
       window.dispatchEvent(new Event("kindora-auth-change"));
 
       setSuccess("Account created successfully! Redirecting...");
-
-      setTimeout(() => {
-        router.push("/");
-      }, 1000);
+      setTimeout(() => router.push("/"), 1000);
     } catch (err) {
-      console.error("Registration error:", err);
-
       setError(
         err.message === "Failed to fetch"
           ? "Cannot connect to the server. Please try again later."
@@ -79,6 +68,9 @@ export default function RegisterPage() {
       setLoading(false);
     }
   }
+
+  const inputClass =
+    "w-full rounded-xl border border-gray-200 px-4 py-3 outline-none transition focus:border-[#477653] focus:ring-2 focus:ring-[#477653]/20";
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-[#f7f8f2] px-4 py-12 text-[#183c2b]">
@@ -90,13 +82,11 @@ export default function RegisterPage() {
           ← Back to Kindora
         </Link>
 
-        <div className="mb-8 mt-7 text-center">
+        <div className="mb-7 mt-7 text-center">
           <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#e8f2e5] text-3xl">
             🌱
           </div>
-
           <h1 className="text-3xl font-bold tracking-tight">Join Kindora</h1>
-
           <p className="mt-2 text-sm text-gray-500">
             Create an account and start making a difference.
           </p>
@@ -120,12 +110,46 @@ export default function RegisterPage() {
           </div>
         )}
 
+        <div className="space-y-3">
+          <button
+            type="button"
+            onClick={() => startOAuth("google")}
+            className="flex w-full items-center justify-center gap-3 rounded-xl border border-gray-200 px-4 py-3 font-semibold transition hover:bg-gray-50"
+          >
+            <span className="text-lg font-bold text-[#4285F4]">G</span>
+            Sign up with Google
+          </button>
+
+          <button
+            type="button"
+            onClick={() => startOAuth("github")}
+            className="flex w-full items-center justify-center gap-3 rounded-xl border border-gray-200 px-4 py-3 font-semibold transition hover:bg-gray-50"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              className="h-5 w-5"
+              fill="currentColor"
+              aria-hidden="true"
+            >
+              <path d="M12 .9a11.1 11.1 0 0 0-3.51 21.63c.56.1.76-.24.76-.54v-2.08c-3.1.68-3.76-1.31-3.76-1.31-.5-1.28-1.24-1.62-1.24-1.62-1.01-.69.08-.68.08-.68 1.12.08 1.71 1.15 1.71 1.15 1 .1.76 2.02 3.35 1.38.1-.72.39-1.21.7-1.49-2.48-.28-5.09-1.24-5.09-5.52 0-1.22.44-2.22 1.15-3-.12-.28-.5-1.42.11-2.96 0 0 .94-.3 3.05 1.14a10.6 10.6 0 0 1 5.55 0c2.11-1.44 3.04-1.14 3.04-1.14.61 1.54.23 2.68.12 2.96.71.78 1.14 1.78 1.14 3.01 0 4.29-2.61 5.23-5.1 5.51.4.35.75 1.02.75 2.06v3.05c0 .3.2.65.77.54A11.1 11.1 0 0 0 12 .9Z" />
+            </svg>
+            Sign up with GitHub
+          </button>
+        </div>
+
+        <div className="my-6 flex items-center gap-4">
+          <div className="h-px flex-1 bg-gray-200" />
+          <span className="text-xs font-medium uppercase tracking-wider text-gray-400">
+            Or register with email
+          </span>
+          <div className="h-px flex-1 bg-gray-200" />
+        </div>
+
         <form onSubmit={handleSubmit} className="space-y-5">
           <div>
             <label htmlFor="name" className="mb-2 block text-sm font-semibold">
               Full name
             </label>
-
             <input
               id="name"
               name="name"
@@ -137,7 +161,7 @@ export default function RegisterPage() {
               value={form.name}
               onChange={handleChange}
               placeholder="Enter your full name"
-              className="w-full rounded-xl border border-gray-200 px-4 py-3 outline-none transition focus:border-[#477653] focus:ring-2 focus:ring-[#477653]/20"
+              className={inputClass}
             />
           </div>
 
@@ -145,7 +169,6 @@ export default function RegisterPage() {
             <label htmlFor="email" className="mb-2 block text-sm font-semibold">
               Email address
             </label>
-
             <input
               id="email"
               name="email"
@@ -156,7 +179,7 @@ export default function RegisterPage() {
               value={form.email}
               onChange={handleChange}
               placeholder="you@example.com"
-              className="w-full rounded-xl border border-gray-200 px-4 py-3 outline-none transition focus:border-[#477653] focus:ring-2 focus:ring-[#477653]/20"
+              className={inputClass}
             />
           </div>
 
@@ -167,7 +190,6 @@ export default function RegisterPage() {
             >
               Password
             </label>
-
             <input
               id="password"
               name="password"
@@ -179,7 +201,7 @@ export default function RegisterPage() {
               value={form.password}
               onChange={handleChange}
               placeholder="At least 8 characters"
-              className="w-full rounded-xl border border-gray-200 px-4 py-3 outline-none transition focus:border-[#477653] focus:ring-2 focus:ring-[#477653]/20"
+              className={inputClass}
             />
           </div>
 
