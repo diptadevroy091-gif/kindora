@@ -13,6 +13,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
 dotenv.config({ path: path.join(__dirname, ".env") });
 
 const app = express();
@@ -65,17 +66,14 @@ const allowedOrigins = new Set([
 
 const corsOptions = {
   origin(origin, callback) {
-    // Allow requests without an Origin header.
     if (!origin) {
       return callback(null, true);
     }
 
-    // Allow the production frontend and local development.
     if (allowedOrigins.has(origin)) {
       return callback(null, true);
     }
 
-    // Allow HTTPS preview deployments for the Kindora project.
     try {
       const url = new URL(origin);
 
@@ -92,21 +90,15 @@ const corsOptions = {
     }
 
     console.warn("CORS blocked origin:", origin);
-
-    // Do not throw an error for an unapproved origin.
     return callback(null, false);
   },
 
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-
   allowedHeaders: ["Content-Type", "Authorization"],
-
   optionsSuccessStatus: 204,
 };
 
 app.use(cors(corsOptions));
-
-// Parse JSON requests.
 app.use(express.json({ limit: "20kb" }));
 
 // ==========================================
@@ -137,6 +129,7 @@ app.use(passport.initialize());
 let db;
 
 const users = () => db.collection("users");
+const events = () => db.collection("events");
 
 const validEmail = (email) =>
   typeof email === "string" &&
@@ -147,6 +140,7 @@ const publicUser = (user) => ({
   _id: user._id,
   name: user.name,
   email: user.email,
+  avatar: user.avatar || "",
 });
 
 const makeToken = (user) =>
@@ -177,6 +171,21 @@ function isConfigured(provider) {
     process.env[`${prefix}_CLIENT_ID`] &&
     process.env[`${prefix}_CLIENT_SECRET`],
   );
+}
+
+function isValidAvatar(avatar) {
+  if (avatar === "") return true;
+
+  if (typeof avatar !== "string" || avatar.length > 2048) {
+    return false;
+  }
+
+  try {
+    const url = new URL(avatar);
+    return url.protocol === "https:";
+  } catch {
+    return false;
+  }
 }
 
 // ==========================================
@@ -257,6 +266,7 @@ if (isConfigured("google")) {
             providerId: String(profile.id),
             email: email.trim().toLowerCase(),
             name: profile.displayName || email.split("@")[0],
+            avatar: profile.photos?.[0]?.value || "",
           });
         } catch (error) {
           return done(error);
@@ -312,6 +322,7 @@ if (isConfigured("github")) {
               profile.displayName ||
               profile.username ||
               primary.email.split("@")[0],
+            avatar: profile.photos?.[0]?.value || "",
           });
         } catch (error) {
           return done(error);
@@ -331,7 +342,6 @@ function startOAuth(provider) {
       return res.redirect(redirectError("oauth_not_configured"));
     }
 
-    // Normal login must not inherit an old linking session.
     delete req.session.oauthLinkUserId;
     delete req.session.oauthLinkProvider;
 
@@ -478,6 +488,7 @@ function oauthCallback(provider) {
                 80,
               ),
               email: identity.email,
+              avatar: isValidAvatar(identity.avatar) ? identity.avatar : "",
               password: null,
               [providerField]: identity.providerId,
               createdAt: new Date(),
@@ -585,6 +596,7 @@ app.post("/api/auth/register", async (req, res) => {
     const record = {
       name: cleanName,
       email: cleanEmail,
+      avatar: "",
       password: await bcrypt.hash(password, 12),
       createdAt: new Date(),
     };
@@ -595,13 +607,14 @@ app.post("/api/auth/register", async (req, res) => {
       _id: result.insertedId,
       name: record.name,
       email: record.email,
+      avatar: record.avatar,
     };
 
     return res.status(201).json({
       success: true,
       message: "Registration successful",
       token: makeToken(user),
-      user,
+      user: publicUser(user),
     });
   } catch (error) {
     console.error("Registration error:", error.message);
@@ -830,21 +843,98 @@ app.post("/api/auth/oauth/exchange", async (req, res) => {
 });
 
 // ==========================================
+// PROFILE - GET CURRENT USER
+// ==========================================
+
+app.get("/api/users/me", requireAuth, async (req, res) => {
+  try {
+    return res.json({
+      success: true,
+      user: publicUser(req.kindoraUser),
+    });
+  } catch (error) {
+    console.error("Profile fetch error:", error.message);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch profile",
+    });
+  }
+});
+
+// ==========================================
+// PROFILE - UPDATE CURRENT USER
+// ==========================================
+
+app.put("/api/users/me", requireAuth, async (req, res) => {
+  try {
+    const { name, avatar } = req.body ?? {};
+
+    if (typeof name !== "string") {
+      return res.status(400).json({
+        success: false,
+        message: "Name is required",
+      });
+    }
+
+    const cleanName = name.trim();
+
+    if (cleanName.length < 2 || cleanName.length > 80) {
+      return res.status(400).json({
+        success: false,
+        message: "Name must be between 2 and 80 characters",
+      });
+    }
+
+    if (avatar !== undefined && !isValidAvatar(avatar)) {
+      return res.status(400).json({
+        success: false,
+        message: "Avatar must be an empty string or a valid HTTPS image URL",
+      });
+    }
+
+    const update = {
+      name: cleanName,
+      updatedAt: new Date(),
+    };
+
+    if (avatar !== undefined) {
+      update.avatar = avatar;
+    }
+
+    await users().updateOne({ _id: req.kindoraUser._id }, { $set: update });
+
+    const updatedUser = await users().findOne({
+      _id: req.kindoraUser._id,
+    });
+
+    return res.json({
+      success: true,
+      message: "Profile updated successfully",
+      user: publicUser(updatedUser),
+    });
+  } catch (error) {
+    console.error("Profile update error:", error.message);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to update profile",
+    });
+  }
+});
+
+// ==========================================
 // EVENTS - GET ALL
 // ==========================================
 
 app.get("/api/events", async (req, res) => {
   try {
-    const events = await db
-      .collection("events")
-      .find({})
-      .sort({ _id: -1 })
-      .toArray();
+    const eventList = await events().find({}).sort({ _id: -1 }).toArray();
 
     return res.json({
       success: true,
-      count: events.length,
-      events,
+      count: eventList.length,
+      events: eventList,
     });
   } catch (error) {
     console.error("Fetch events error:", error.message);
@@ -857,25 +947,55 @@ app.get("/api/events", async (req, res) => {
 });
 
 // ==========================================
-// EVENTS - CREATE
+// EVENTS - CREATE (AUTH REQUIRED)
 // ==========================================
 
-app.post("/api/events", async (req, res) => {
+app.post("/api/events", requireAuth, async (req, res) => {
   try {
     const { title, type, location, date, image, description } = req.body ?? {};
 
     if (
       typeof title !== "string" ||
       !title.trim() ||
+      title.trim().length > 120 ||
       typeof type !== "string" ||
       !type.trim() ||
       typeof location !== "string" ||
       !location.trim() ||
-      !date
+      location.trim().length > 200 ||
+      typeof date !== "string" ||
+      !date.trim()
     ) {
       return res.status(400).json({
         success: false,
-        message: "Title, type, location and date are required",
+        message: "Please provide valid title, type, location and date",
+      });
+    }
+
+    if (
+      image !== undefined &&
+      (typeof image !== "string" || image.length > 2048)
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid event image URL",
+      });
+    }
+
+    if (image && !isValidAvatar(image)) {
+      return res.status(400).json({
+        success: false,
+        message: "Event image must be a valid HTTPS URL",
+      });
+    }
+
+    if (
+      description !== undefined &&
+      (typeof description !== "string" || description.length > 2000)
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Description must be under 2000 characters",
       });
     }
 
@@ -883,16 +1003,18 @@ app.post("/api/events", async (req, res) => {
       title: title.trim(),
       type: type.trim(),
       location: location.trim(),
-      date,
-      image: typeof image === "string" ? image : "",
-      description: typeof description === "string" ? description : "",
+      date: date.trim(),
+      image: image || "",
+      description: description || "",
+      ownerId: req.kindoraUser._id,
       createdAt: new Date(),
     };
 
-    const result = await db.collection("events").insertOne(event);
+    const result = await events().insertOne(event);
 
     return res.status(201).json({
       success: true,
+      message: "Event created successfully",
       event: {
         _id: result.insertedId,
         ...event,
@@ -909,10 +1031,10 @@ app.post("/api/events", async (req, res) => {
 });
 
 // ==========================================
-// EVENTS - UPDATE
+// EVENTS - UPDATE (OWNER ONLY)
 // ==========================================
 
-app.put("/api/events/:id", async (req, res) => {
+app.put("/api/events/:id", requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -928,43 +1050,97 @@ app.put("/api/events/:id", async (req, res) => {
     if (
       typeof title !== "string" ||
       !title.trim() ||
+      title.trim().length > 120 ||
       typeof type !== "string" ||
       !type.trim() ||
       typeof location !== "string" ||
       !location.trim() ||
-      !date
+      location.trim().length > 200 ||
+      typeof date !== "string" ||
+      !date.trim()
     ) {
       return res.status(400).json({
         success: false,
-        message: "Title, type, location and date are required",
+        message: "Please provide valid title, type, location and date",
       });
     }
 
-    const result = await db.collection("events").updateOne(
-      { _id: new ObjectId(id) },
-      {
-        $set: {
-          title: title.trim(),
-          type: type.trim(),
-          location: location.trim(),
-          date,
-          image: typeof image === "string" ? image : "",
-          description: typeof description === "string" ? description : "",
-          updatedAt: new Date(),
-        },
-      },
-    );
+    if (
+      image !== undefined &&
+      (typeof image !== "string" || image.length > 2048)
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid event image URL",
+      });
+    }
 
-    if (!result.matchedCount) {
+    if (image && !isValidAvatar(image)) {
+      return res.status(400).json({
+        success: false,
+        message: "Event image must be a valid HTTPS URL",
+      });
+    }
+
+    if (
+      description !== undefined &&
+      (typeof description !== "string" || description.length > 2000)
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Description must be under 2000 characters",
+      });
+    }
+
+    const eventId = new ObjectId(id);
+
+    const existingEvent = await events().findOne({
+      _id: eventId,
+    });
+
+    if (!existingEvent) {
       return res.status(404).json({
         success: false,
         message: "Event not found",
       });
     }
 
+    if (
+      !existingEvent.ownerId ||
+      !existingEvent.ownerId.equals(req.kindoraUser._id)
+    ) {
+      return res.status(403).json({
+        success: false,
+        message: "You are not allowed to edit this event",
+      });
+    }
+
+    await events().updateOne(
+      {
+        _id: eventId,
+        ownerId: req.kindoraUser._id,
+      },
+      {
+        $set: {
+          title: title.trim(),
+          type: type.trim(),
+          location: location.trim(),
+          date: date.trim(),
+          image: image || "",
+          description: description || "",
+          updatedAt: new Date(),
+        },
+      },
+    );
+
+    const updatedEvent = await events().findOne({
+      _id: eventId,
+    });
+
     return res.json({
       success: true,
       message: "Event updated successfully",
+      event: updatedEvent,
     });
   } catch (error) {
     console.error("Update event error:", error.message);
@@ -977,10 +1153,10 @@ app.put("/api/events/:id", async (req, res) => {
 });
 
 // ==========================================
-// EVENTS - DELETE
+// EVENTS - DELETE (OWNER ONLY)
 // ==========================================
 
-app.delete("/api/events/:id", async (req, res) => {
+app.delete("/api/events/:id", requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -991,16 +1167,33 @@ app.delete("/api/events/:id", async (req, res) => {
       });
     }
 
-    const result = await db.collection("events").deleteOne({
-      _id: new ObjectId(id),
+    const eventId = new ObjectId(id);
+
+    const existingEvent = await events().findOne({
+      _id: eventId,
     });
 
-    if (!result.deletedCount) {
+    if (!existingEvent) {
       return res.status(404).json({
         success: false,
         message: "Event not found",
       });
     }
+
+    if (
+      !existingEvent.ownerId ||
+      !existingEvent.ownerId.equals(req.kindoraUser._id)
+    ) {
+      return res.status(403).json({
+        success: false,
+        message: "You are not allowed to delete this event",
+      });
+    }
+
+    await events().deleteOne({
+      _id: eventId,
+      ownerId: req.kindoraUser._id,
+    });
 
     return res.json({
       success: true,
@@ -1094,6 +1287,10 @@ async function startServer() {
     await users().createIndex({ googleId: 1 }, { unique: true, sparse: true });
 
     await users().createIndex({ githubId: 1 }, { unique: true, sparse: true });
+
+    // Event indexes.
+    await events().createIndex({ ownerId: 1 });
+    await events().createIndex({ createdAt: -1 });
 
     // Newsletter indexes.
     await db
