@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 
-const API_URL = "http://localhost:5000/api/events";
+// Deployed Render Backend API
+const API_URL = "https://kindora-api-vb9y.onrender.com/api/events";
 
 const features = [
   {
@@ -82,6 +83,7 @@ export default function Home() {
     };
   }, []);
 
+  // Logout
   function handleLogout() {
     sessionStorage.removeItem("kindora_token");
     sessionStorage.removeItem("kindora_user");
@@ -92,6 +94,7 @@ export default function Home() {
     window.location.href = "/";
   }
 
+  // Fetch Events
   async function fetchEvents() {
     try {
       setEventsLoading(true);
@@ -117,6 +120,7 @@ export default function Home() {
     fetchEvents();
   }, []);
 
+  // Open Edit Modal
   function handleEditClick(event) {
     setEditingEvent(event);
     setActionError("");
@@ -131,6 +135,7 @@ export default function Home() {
     });
   }
 
+  // Close Edit Modal
   function handleCloseEdit() {
     if (saving) return;
 
@@ -139,6 +144,7 @@ export default function Home() {
     setActionError("");
   }
 
+  // Handle Input Changes
   function handleEditChange(e) {
     const { name, value } = e.target;
 
@@ -148,6 +154,7 @@ export default function Home() {
     }));
   }
 
+  // Update Event
   async function handleUpdate(e) {
     e.preventDefault();
 
@@ -192,6 +199,7 @@ export default function Home() {
     }
   }
 
+  // Delete Event
   async function handleDelete(event) {
     if (!event._id) {
       alert("Event ID is missing.");
@@ -226,6 +234,7 @@ export default function Home() {
     }
   }
 
+  // Theme Colors
   const bg = dark ? "#14231c" : "#faf9f5";
   const surface = dark ? "#1e3027" : "#ffffff";
   const text = dark ? "#f1f5ed" : "#20392c";
@@ -689,6 +698,7 @@ export default function Home() {
                 <label className="mb-2 block text-sm font-semibold">
                   Event Title *
                 </label>
+
                 <input
                   required
                   name="title"
@@ -704,6 +714,7 @@ export default function Home() {
                 <label className="mb-2 block text-sm font-semibold">
                   Event Type *
                 </label>
+
                 <select
                   required
                   name="type"
@@ -726,6 +737,7 @@ export default function Home() {
                 <label className="mb-2 block text-sm font-semibold">
                   Location *
                 </label>
+
                 <input
                   required
                   name="location"
@@ -741,6 +753,7 @@ export default function Home() {
                 <label className="mb-2 block text-sm font-semibold">
                   Event Date *
                 </label>
+
                 <input
                   required
                   type="date"
@@ -756,6 +769,7 @@ export default function Home() {
                 <label className="mb-2 block text-sm font-semibold">
                   Image URL
                 </label>
+
                 <input
                   type="url"
                   name="image"
@@ -771,6 +785,7 @@ export default function Home() {
                 <label className="mb-2 block text-sm font-semibold">
                   Description
                 </label>
+
                 <textarea
                   rows={3}
                   name="description"
