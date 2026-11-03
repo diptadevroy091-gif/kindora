@@ -23,7 +23,6 @@ const CLIENT_URL = (process.env.CLIENT_URL || "http://localhost:3000").replace(
   /\/+$/,
   "",
 );
-
 const API_BASE_URL = (
   process.env.API_BASE_URL || `http://localhost:${PORT}`
 ).replace(/\/+$/, "");
@@ -66,9 +65,7 @@ const allowedOrigins = new Set([
 
 const corsOptions = {
   origin(origin, callback) {
-    if (!origin) {
-      return callback(null, true);
-    }
+    if (!origin) return callback(null, true);
 
     if (allowedOrigins.has(origin)) {
       return callback(null, true);
@@ -186,6 +183,28 @@ function isValidAvatar(avatar) {
   } catch {
     return false;
   }
+}
+
+// ==========================================
+// EVENT DATE VALIDATION
+// ==========================================
+
+function isValidEventDate(value) {
+  if (typeof value !== "string") return false;
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return false;
+  }
+
+  const [year, month, day] = value.split("-").map(Number);
+
+  const date = new Date(Date.UTC(year, month - 1, day));
+
+  return (
+    date.getUTCFullYear() === year &&
+    date.getUTCMonth() === month - 1 &&
+    date.getUTCDate() === day
+  );
 }
 
 // ==========================================
@@ -307,7 +326,6 @@ if (isConfigured("github")) {
           }
 
           const emails = await response.json();
-
           const primary = emails.find((item) => item.primary && item.verified);
 
           if (!primary || !validEmail(primary.email)) {
@@ -399,9 +417,7 @@ function oauthCallback(provider) {
           const linkUserId = req.session?.oauthLinkUserId;
           const linkProvider = req.session?.oauthLinkProvider;
 
-          // ======================================
           // ACCOUNT LINKING MODE
-          // ======================================
 
           if (linkUserId && linkProvider === provider) {
             if (!ObjectId.isValid(linkUserId)) {
@@ -463,9 +479,7 @@ function oauthCallback(provider) {
             });
           }
 
-          // ======================================
           // LOGIN MODE
-          // ======================================
 
           let user = await users().findOne({
             [providerField]: identity.providerId,
@@ -972,6 +986,13 @@ app.post("/api/events", requireAuth, async (req, res) => {
       });
     }
 
+    if (!isValidEventDate(date.trim())) {
+      return res.status(400).json({
+        success: false,
+        message: "Event date must be a valid date in YYYY-MM-DD format",
+      });
+    }
+
     if (
       image !== undefined &&
       (typeof image !== "string" || image.length > 2048)
@@ -1062,6 +1083,13 @@ app.put("/api/events/:id", requireAuth, async (req, res) => {
       return res.status(400).json({
         success: false,
         message: "Please provide valid title, type, location and date",
+      });
+    }
+
+    if (!isValidEventDate(date.trim())) {
+      return res.status(400).json({
+        success: false,
+        message: "Event date must be a valid date in YYYY-MM-DD format",
       });
     }
 
@@ -1283,9 +1311,7 @@ async function startServer() {
 
     // User indexes.
     await users().createIndex({ email: 1 }, { unique: true });
-
     await users().createIndex({ googleId: 1 }, { unique: true, sparse: true });
-
     await users().createIndex({ githubId: 1 }, { unique: true, sparse: true });
 
     // Event indexes.
