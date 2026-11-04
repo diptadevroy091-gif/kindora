@@ -1,36 +1,83 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
 
-## Getting Started
+# Kindora
 
-First, run the development server:
+**Kindora – Make a Difference, One Event at a Time.**
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+🌐 **Live Website:** [https://kindora-lime.vercel.app](https://kindora-lime.vercel.app)
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Kindora is a community-focused event platform where users can discover upcoming events, create events, and connect with others to make a positive impact.
 
-You can start editing the page by modifying `app/page.js`. The page auto-updates as you edit the file.
+## Features
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- **User Authentication:** Register and log in using email and password.
+- **Google & GitHub Login:** Sign in using Google or GitHub accounts.
+- **Discover Events:** Browse and explore community events.
+- **Create Events:** Logged-in users can create new events.
+- **Upcoming Events:** View upcoming events and their details.
+- **User Profile:** View and manage user profile information.
+- **Newsletter Subscription:** Subscribe to receive updates.
 
-## Learn More
+## Technologies Used
 
-To learn more about Next.js, take a look at the following resources:
+### Frontend
+- Next.js
+- React
+- Tailwind CSS
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### Backend
+- Node.js
+- Express.js
+- MongoDB
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### Authentication
+- JWT
+- Passport.js
+- Google OAuth
+- GitHub OAuth
 
-## Deploy on Vercel
+## Run Locally
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+1. Clone the repository:
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+   ```bash
+   git clone https://github.com/diptadevroy091-gif/kindora.git
+   ```
+
+2. Go to the client directory:
+
+   ```bash
+   cd kindora/client
+   ```
+
+3. Install dependencies:
+
+   ```bash
+   npm install
+   ```
+
+4. Create `.env.local`:
+
+   ```env
+   NEXT_PUBLIC_API_URL=https://kindora-api-vb9y.onrender.com
+   ```
+
+5. Start the development server:
+
+   ```bash
+   npm run dev
+   ```
+
+6. Open http://localhost:3000
+
+## Backend
+
+API URL: https://kindora-api-vb9y.onrender.com
+
+## Deployment
+
+- Frontend: Vercel
+- Backend: Render
+
+## Author
+
+**Kindora Project**
