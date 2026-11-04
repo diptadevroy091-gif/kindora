@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useTheme } from "@/components/ThemeProvider";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_URL || "https://kindora-api-vb9y.onrender.com";
@@ -29,12 +30,14 @@ function GoogleLogo() {
   );
 }
 
-function GitHubLogo() {
+function GitHubLogo({ dark }) {
   return (
     <svg
       viewBox="0 0 24 24"
       aria-hidden="true"
-      className="h-5 w-5 shrink-0 fill-current text-[#24292f]"
+      className="h-5 w-5 shrink-0"
+      fill="currentColor"
+      style={{ color: dark ? "#ffffff" : "#24292f" }}
     >
       <path d="M12 .9a11.1 11.1 0 0 0-3.51 21.63c.55.1.76-.24.76-.54v-2.1c-3.1.68-3.76-1.32-3.76-1.32-.5-1.29-1.24-1.63-1.24-1.63-1.02-.7.08-.69.08-.69 1.12.08 1.71 1.15 1.71 1.15 1 1.7 2.62 1.21 3.26.92.1-.72.39-1.21.71-1.49-2.47-.28-5.07-1.24-5.07-5.5 0-1.22.44-2.21 1.15-2.99-.12-.28-.5-1.42.11-2.95 0 0 .94-.3 3.05 1.14a10.6 10.6 0 0 1 5.55 0c2.11-1.44 3.05-1.14 3.05-1.14.61 1.53.23 2.67.11 2.95.72.78 1.15 1.77 1.15 2.99 0 4.27-2.6 5.22-5.08 5.49.4.35.76 1.02.76 2.06v3.05c0 .3.2.65.77.54A11.1 11.1 0 0 0 12 .9Z" />
     </svg>
@@ -42,6 +45,8 @@ function GitHubLogo() {
 }
 
 export default function LoginPage() {
+  const { dark, toggleTheme } = useTheme();
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -49,6 +54,13 @@ export default function LoginPage() {
   const [token, setToken] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+
+  const bg = dark ? "#14231c" : "#f9fafb";
+  const surface = dark ? "#1e3027" : "#ffffff";
+  const text = dark ? "#f1f5ed" : "#111827";
+  const muted = dark ? "#b8c8bc" : "#6b7280";
+  const border = dark ? "#35493c" : "#d1d5db";
+  const inputBg = dark ? "#14231c" : "#ffffff";
 
   useEffect(() => {
     setToken(sessionStorage.getItem("kindora_token") || "");
@@ -140,19 +152,51 @@ export default function LoginPage() {
     }
   }
 
+  const inputClass =
+    "w-full rounded-lg border px-4 py-3 outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-500/20";
+
   return (
-    <main className="flex min-h-screen items-center justify-center bg-gray-50 px-4 py-10">
-      <div className="w-full max-w-md rounded-2xl border border-gray-200 bg-white p-8 shadow-sm">
+    <main
+      className="flex min-h-screen items-center justify-center px-4 py-10 transition-colors duration-300"
+      style={{ background: bg, color: text }}
+    >
+      <div className="fixed top-5 right-5">
+        <button
+          type="button"
+          onClick={toggleTheme}
+          aria-label="Toggle color theme"
+          className="flex h-11 w-11 items-center justify-center rounded-full border text-lg shadow-sm transition hover:scale-105"
+          style={{
+            background: surface,
+            color: text,
+            borderColor: border,
+          }}
+        >
+          {dark ? "☀️" : "🌙"}
+        </button>
+      </div>
+
+      <div
+        className="w-full max-w-md rounded-2xl border p-6 shadow-sm transition-colors duration-300 sm:p-8"
+        style={{
+          background: surface,
+          borderColor: border,
+        }}
+      >
         <div className="mb-7 text-center">
-          <Link href="/" className="text-3xl font-bold text-emerald-700">
+          <Link
+            href="/"
+            className="text-3xl font-bold"
+            style={{ color: dark ? "#a8d49a" : "#047857" }}
+          >
             Kindora
           </Link>
 
-          <h1 className="mt-5 text-2xl font-bold text-gray-900">
+          <h1 className="mt-5 text-2xl font-bold" style={{ color: text }}>
             Welcome back
           </h1>
 
-          <p className="mt-2 text-sm text-gray-500">
+          <p className="mt-2 text-sm" style={{ color: muted }}>
             Sign in to continue to your account.
           </p>
         </div>
@@ -160,7 +204,11 @@ export default function LoginPage() {
         {error && (
           <div
             role="alert"
-            className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700"
+            className="mb-4 rounded-lg p-3 text-sm"
+            style={{
+              background: dark ? "#482c30" : "#fef2f2",
+              color: dark ? "#fecaca" : "#b91c1c",
+            }}
           >
             {error}
           </div>
@@ -169,7 +217,11 @@ export default function LoginPage() {
         {message && (
           <div
             role="status"
-            className="mb-4 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-700"
+            className="mb-4 rounded-lg p-3 text-sm"
+            style={{
+              background: dark ? "#263f32" : "#ecfdf5",
+              color: dark ? "#bbf7d0" : "#047857",
+            }}
           >
             {message}
           </div>
@@ -179,7 +231,8 @@ export default function LoginPage() {
           <div>
             <label
               htmlFor="email"
-              className="mb-1 block text-sm font-medium text-gray-700"
+              className="mb-1 block text-sm font-medium"
+              style={{ color: text }}
             >
               Email address
             </label>
@@ -192,14 +245,20 @@ export default function LoginPage() {
               value={email}
               onChange={(event) => setEmail(event.target.value)}
               placeholder="you@example.com"
-              className="w-full rounded-lg border border-gray-300 px-4 py-3 text-gray-900 outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
+              className={inputClass}
+              style={{
+                background: inputBg,
+                color: text,
+                borderColor: border,
+              }}
             />
           </div>
 
           <div>
             <label
               htmlFor="password"
-              className="mb-1 block text-sm font-medium text-gray-700"
+              className="mb-1 block text-sm font-medium"
+              style={{ color: text }}
             >
               Password
             </label>
@@ -212,7 +271,12 @@ export default function LoginPage() {
               value={password}
               onChange={(event) => setPassword(event.target.value)}
               placeholder="Enter your password"
-              className="w-full rounded-lg border border-gray-300 px-4 py-3 text-gray-900 outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
+              className={inputClass}
+              style={{
+                background: inputBg,
+                color: text,
+                borderColor: border,
+              }}
             />
           </div>
 
@@ -226,20 +290,25 @@ export default function LoginPage() {
         </form>
 
         <div className="my-5 flex items-center gap-3">
-          <div className="h-px flex-1 bg-gray-200" />
+          <div className="h-px flex-1" style={{ background: border }} />
 
-          <span className="text-xs font-medium text-gray-400">
+          <span className="text-xs font-medium" style={{ color: muted }}>
             OR CONTINUE WITH
           </span>
 
-          <div className="h-px flex-1 bg-gray-200" />
+          <div className="h-px flex-1" style={{ background: border }} />
         </div>
 
         <div className="space-y-3">
           <button
             type="button"
             onClick={() => startOAuth("google")}
-            className="flex w-full items-center justify-center gap-3 rounded-lg border border-gray-300 bg-white px-4 py-3 font-medium text-gray-700 transition hover:bg-gray-50"
+            className="flex w-full items-center justify-center gap-3 rounded-lg border px-4 py-3 font-medium transition hover:opacity-80"
+            style={{
+              background: surface,
+              color: text,
+              borderColor: border,
+            }}
           >
             <GoogleLogo />
             <span>Continue with Google</span>
@@ -248,20 +317,25 @@ export default function LoginPage() {
           <button
             type="button"
             onClick={() => startOAuth("github")}
-            className="flex w-full items-center justify-center gap-3 rounded-lg border border-gray-300 bg-white px-4 py-3 font-medium text-gray-700 transition hover:bg-gray-50"
+            className="flex w-full items-center justify-center gap-3 rounded-lg border px-4 py-3 font-medium transition hover:opacity-80"
+            style={{
+              background: surface,
+              color: text,
+              borderColor: border,
+            }}
           >
-            <GitHubLogo />
+            <GitHubLogo dark={dark} />
             <span>Continue with GitHub</span>
           </button>
         </div>
 
         {token && (
-          <div className="mt-7 border-t border-gray-200 pt-5">
-            <h2 className="font-semibold text-gray-900">
+          <div className="mt-7 border-t pt-5" style={{ borderColor: border }}>
+            <h2 className="font-semibold" style={{ color: text }}>
               Connect your account
             </h2>
 
-            <p className="mt-1 text-sm leading-6 text-gray-500">
+            <p className="mt-1 text-sm leading-6" style={{ color: muted }}>
               Connect your Google account to your existing Kindora account.
             </p>
 
@@ -269,7 +343,12 @@ export default function LoginPage() {
               type="button"
               onClick={handleGoogleLink}
               disabled={linking}
-              className="mt-3 flex w-full items-center justify-center gap-3 rounded-lg border border-emerald-700 bg-white px-4 py-3 font-semibold text-emerald-800 transition hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60"
+              className="mt-3 flex w-full items-center justify-center gap-3 rounded-lg border px-4 py-3 font-semibold transition hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-60"
+              style={{
+                background: surface,
+                color: dark ? "#a8d49a" : "#065f46",
+                borderColor: dark ? "#52745d" : "#047857",
+              }}
             >
               <GoogleLogo />
 
@@ -278,20 +357,22 @@ export default function LoginPage() {
           </div>
         )}
 
-        <p className="mt-6 text-center text-sm text-gray-500">
+        <p className="mt-6 text-center text-sm" style={{ color: muted }}>
           Don't have an account?{" "}
           <Link
             href="/register"
-            className="font-semibold text-emerald-700 hover:underline"
+            className="font-semibold hover:underline"
+            style={{ color: dark ? "#a8d49a" : "#047857" }}
           >
             Sign up
           </Link>
         </p>
 
-        <p className="mt-3 text-center text-sm text-gray-500">
+        <p className="mt-3 text-center text-sm">
           <Link
             href="/"
-            className="font-medium text-emerald-700 hover:underline"
+            className="font-medium hover:underline"
+            style={{ color: dark ? "#a8d49a" : "#047857" }}
           >
             Back to home
           </Link>

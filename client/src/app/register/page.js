@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useTheme } from "@/components/ThemeProvider";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_URL || "https://kindora-api-vb9y.onrender.com";
@@ -30,12 +31,14 @@ function GoogleLogo() {
   );
 }
 
-function GitHubLogo() {
+function GitHubLogo({ dark }) {
   return (
     <svg
       viewBox="0 0 24 24"
       aria-hidden="true"
-      className="h-5 w-5 shrink-0 fill-current text-[#24292f]"
+      className="h-5 w-5 shrink-0"
+      fill="currentColor"
+      style={{ color: dark ? "#ffffff" : "#24292f" }}
     >
       <path d="M12 .9a11.1 11.1 0 0 0-3.51 21.63c.56.1.76-.24.76-.54v-2.08c-3.1.68-3.76-1.31-3.76-1.31-.5-1.28-1.24-1.62-1.24-1.62-1.01-.69.08-.68.08-.68 1.12.08 1.71 1.15 1.71 1.15 1 .1.76 2.02 3.35 1.38.1-.72.39-1.21.7-1.49-2.48-.28-5.09-1.24-5.09-5.52 0-1.22.44-2.22 1.15-3-.12-.28-.5-1.42.11-2.96 0 0 .94-.3 3.05 1.14a10.6 10.6 0 0 1 5.55 0c2.11-1.44 3.04-1.14 3.04-1.14.61 1.54.23 2.68.12 2.96.71.78 1.14 1.78 1.14 3.01 0 4.29-2.61 5.23-5.1 5.51.4.35.75 1.02.75 2.06v3.05c0 .3.2.65.77.54A11.1 11.1 0 0 0 12 .9Z" />
     </svg>
@@ -44,6 +47,7 @@ function GitHubLogo() {
 
 export default function RegisterPage() {
   const router = useRouter();
+  const { dark, toggleTheme } = useTheme();
 
   const [form, setForm] = useState({
     name: "",
@@ -54,6 +58,13 @@ export default function RegisterPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+
+  const bg = dark ? "#14231c" : "#f7f8f2";
+  const surface = dark ? "#1e3027" : "#ffffff";
+  const text = dark ? "#f1f5ed" : "#183c2b";
+  const muted = dark ? "#b8c8bc" : "#6b7280";
+  const border = dark ? "#35493c" : "#e2e8df";
+  const inputBg = dark ? "#14231c" : "#ffffff";
 
   function handleChange(e) {
     setForm({ ...form, [e.target.name]: e.target.value });
@@ -108,26 +119,61 @@ export default function RegisterPage() {
   }
 
   const inputClass =
-    "w-full rounded-xl border border-gray-200 px-4 py-3 outline-none transition focus:border-[#477653] focus:ring-2 focus:ring-[#477653]/20";
+    "w-full rounded-xl border px-4 py-3 outline-none transition focus:border-[#477653] focus:ring-2 focus:ring-[#477653]/20";
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-[#f7f8f2] px-4 py-12 text-[#183c2b]">
-      <div className="w-full max-w-md rounded-3xl border border-[#e2e8df] bg-white p-7 shadow-xl sm:p-10">
+    <main
+      className="flex min-h-screen items-center justify-center px-4 py-12 transition-colors duration-300"
+      style={{ background: bg, color: text }}
+    >
+      {/* GLOBAL THEME BUTTON */}
+      <button
+        type="button"
+        onClick={toggleTheme}
+        aria-label="Toggle color theme"
+        className="fixed top-5 right-5 flex h-11 w-11 items-center justify-center rounded-full border text-lg shadow-sm transition hover:scale-105"
+        style={{
+          background: surface,
+          color: text,
+          borderColor: border,
+        }}
+      >
+        {dark ? "☀️" : "🌙"}
+      </button>
+
+      <div
+        className="w-full max-w-md rounded-3xl border p-7 shadow-xl transition-colors duration-300 sm:p-10"
+        style={{
+          background: surface,
+          borderColor: border,
+        }}
+      >
         <Link
           href="/"
-          className="text-sm font-semibold text-[#477653] hover:underline"
+          className="text-sm font-semibold hover:underline"
+          style={{ color: dark ? "#a8d49a" : "#477653" }}
         >
           ← Back to Kindora
         </Link>
 
         <div className="mb-7 mt-7 text-center">
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#e8f2e5] text-3xl">
+          <div
+            className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl text-3xl"
+            style={{
+              background: dark ? "#304638" : "#e8f2e5",
+            }}
+          >
             🌱
           </div>
 
-          <h1 className="text-3xl font-bold tracking-tight">Join Kindora</h1>
+          <h1
+            className="text-3xl font-bold tracking-tight"
+            style={{ color: text }}
+          >
+            Join Kindora
+          </h1>
 
-          <p className="mt-2 text-sm text-gray-500">
+          <p className="mt-2 text-sm" style={{ color: muted }}>
             Create an account and start making a difference.
           </p>
         </div>
@@ -135,7 +181,11 @@ export default function RegisterPage() {
         {error && (
           <div
             role="alert"
-            className="mb-5 rounded-xl bg-red-50 p-3 text-sm text-red-700"
+            className="mb-5 rounded-xl p-3 text-sm"
+            style={{
+              background: dark ? "#482c30" : "#fef2f2",
+              color: dark ? "#fecaca" : "#b91c1c",
+            }}
           >
             {error}
           </div>
@@ -144,18 +194,27 @@ export default function RegisterPage() {
         {success && (
           <div
             role="status"
-            className="mb-5 rounded-xl bg-green-50 p-3 text-sm text-green-700"
+            className="mb-5 rounded-xl p-3 text-sm"
+            style={{
+              background: dark ? "#263f32" : "#f0fdf4",
+              color: dark ? "#bbf7d0" : "#15803d",
+            }}
           >
             {success}
           </div>
         )}
 
-        {/* Social Signup */}
+        {/* SOCIAL SIGNUP */}
         <div className="space-y-3">
           <button
             type="button"
             onClick={() => startOAuth("google")}
-            className="flex w-full items-center justify-center gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3 font-semibold text-gray-700 transition hover:bg-gray-50"
+            className="flex w-full items-center justify-center gap-3 rounded-xl border px-4 py-3 font-semibold transition hover:opacity-80"
+            style={{
+              background: surface,
+              color: text,
+              borderColor: border,
+            }}
           >
             <GoogleLogo />
             Sign up with Google
@@ -164,26 +223,38 @@ export default function RegisterPage() {
           <button
             type="button"
             onClick={() => startOAuth("github")}
-            className="flex w-full items-center justify-center gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3 font-semibold text-gray-700 transition hover:bg-gray-50"
+            className="flex w-full items-center justify-center gap-3 rounded-xl border px-4 py-3 font-semibold transition hover:opacity-80"
+            style={{
+              background: surface,
+              color: text,
+              borderColor: border,
+            }}
           >
-            <GitHubLogo />
+            <GitHubLogo dark={dark} />
             Sign up with GitHub
           </button>
         </div>
 
         <div className="my-6 flex items-center gap-4">
-          <div className="h-px flex-1 bg-gray-200" />
+          <div className="h-px flex-1" style={{ background: border }} />
 
-          <span className="text-xs font-medium uppercase tracking-wider text-gray-400">
+          <span
+            className="text-xs font-medium uppercase tracking-wider"
+            style={{ color: muted }}
+          >
             Or register with email
           </span>
 
-          <div className="h-px flex-1 bg-gray-200" />
+          <div className="h-px flex-1" style={{ background: border }} />
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-5">
           <div>
-            <label htmlFor="name" className="mb-2 block text-sm font-semibold">
+            <label
+              htmlFor="name"
+              className="mb-2 block text-sm font-semibold"
+              style={{ color: text }}
+            >
               Full name
             </label>
 
@@ -199,11 +270,20 @@ export default function RegisterPage() {
               onChange={handleChange}
               placeholder="Enter your full name"
               className={inputClass}
+              style={{
+                background: inputBg,
+                color: text,
+                borderColor: border,
+              }}
             />
           </div>
 
           <div>
-            <label htmlFor="email" className="mb-2 block text-sm font-semibold">
+            <label
+              htmlFor="email"
+              className="mb-2 block text-sm font-semibold"
+              style={{ color: text }}
+            >
               Email address
             </label>
 
@@ -218,6 +298,11 @@ export default function RegisterPage() {
               onChange={handleChange}
               placeholder="you@example.com"
               className={inputClass}
+              style={{
+                background: inputBg,
+                color: text,
+                borderColor: border,
+              }}
             />
           </div>
 
@@ -225,6 +310,7 @@ export default function RegisterPage() {
             <label
               htmlFor="password"
               className="mb-2 block text-sm font-semibold"
+              style={{ color: text }}
             >
               Password
             </label>
@@ -241,6 +327,11 @@ export default function RegisterPage() {
               onChange={handleChange}
               placeholder="At least 8 characters"
               className={inputClass}
+              style={{
+                background: inputBg,
+                color: text,
+                borderColor: border,
+              }}
             />
           </div>
 
@@ -253,17 +344,21 @@ export default function RegisterPage() {
           </button>
         </form>
 
-        <p className="mt-7 text-center text-sm text-gray-600">
+        <p className="mt-7 text-center text-sm" style={{ color: muted }}>
           Already have an account?{" "}
           <Link
             href="/login"
-            className="font-bold text-[#285b3b] hover:underline"
+            className="font-bold hover:underline"
+            style={{ color: dark ? "#a8d49a" : "#285b3b" }}
           >
             Log in
           </Link>
         </p>
 
-        <p className="mt-5 text-center text-xs leading-5 text-gray-400">
+        <p
+          className="mt-5 text-center text-xs leading-5"
+          style={{ color: muted }}
+        >
           By creating an account, you agree to use Kindora responsibly.
         </p>
       </div>

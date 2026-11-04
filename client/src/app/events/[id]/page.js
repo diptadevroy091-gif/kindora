@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
+import Link from "next/link";
+import { useTheme } from "@/components/ThemeProvider";
 
 const API_URL = "https://kindora-api-vb9y.onrender.com/api/events";
 
@@ -9,17 +11,18 @@ export default function EventDetails() {
   const params = useParams();
   const id = params.id;
 
+  const { dark, toggleTheme } = useTheme();
+
   const [event, setEvent] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [dark, setDark] = useState(false);
 
   const bg = dark ? "#14231c" : "#faf9f5";
   const surface = dark ? "#1e3027" : "#ffffff";
   const text = dark ? "#f1f5ed" : "#20392c";
   const muted = dark ? "#b8c8bc" : "#68776c";
   const border = dark ? "#35493c" : "#e6e9df";
-  const green = "#315b43";
+  const green = dark ? "#496f50" : "#315b43";
 
   useEffect(() => {
     if (!id) return;
@@ -33,7 +36,7 @@ export default function EventDetails() {
         const data = await response.json();
 
         if (!response.ok || !data.success) {
-          throw new Error(data.message || "Could not load event");
+          throw new Error(data.message || "Could not load event.");
         }
 
         const foundEvent = (data.events || []).find(
@@ -67,67 +70,78 @@ export default function EventDetails() {
     >
       {/* NAVBAR */}
       <header
-        className="sticky top-0 z-20 border-b"
+        className="sticky top-0 z-20 border-b backdrop-blur-xl"
         style={{
-          background: bg,
+          background: dark ? "rgba(20,35,28,.94)" : "rgba(250,249,245,.94)",
           borderColor: border,
         }}
       >
         <nav className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-5 py-4 lg:px-8">
-          <a
+          <Link
             href="/"
             className="text-2xl font-extrabold tracking-tight"
             style={{ color: dark ? "#b7d9a8" : green }}
           >
             kindora<span style={{ color: "#d28b54" }}>.</span>
-          </a>
+          </Link>
 
-          <div className="flex items-center gap-3">
-            <a
+          <div className="flex items-center gap-2 sm:gap-3">
+            <Link
               href="/upcoming-events"
-              className="hidden text-sm font-semibold sm:block"
+              className="hidden text-sm font-semibold transition hover:opacity-70 sm:block"
             >
               Upcoming Events
-            </a>
+            </Link>
 
+            {/* GLOBAL THEME BUTTON */}
             <button
               type="button"
-              onClick={() => setDark(!dark)}
-              aria-label="Toggle theme"
-              className="rounded-full border px-3 py-2"
+              onClick={toggleTheme}
+              aria-label={
+                dark ? "Switch to light theme" : "Switch to dark theme"
+              }
+              title={dark ? "Switch to light theme" : "Switch to dark theme"}
+              className="flex h-10 w-10 items-center justify-center rounded-full border transition hover:opacity-75"
               style={{ borderColor: border }}
             >
               {dark ? "☀️" : "🌙"}
             </button>
 
-            <a
+            <Link
               href="/create-event"
-              className="rounded-full px-4 py-2.5 text-sm font-semibold text-white"
+              className="rounded-full px-4 py-2.5 text-xs font-semibold text-white transition hover:opacity-90 sm:text-sm"
               style={{ background: green }}
             >
               + Create Event
-            </a>
+            </Link>
           </div>
         </nav>
       </header>
 
       {/* MAIN CONTENT */}
       <section className="mx-auto max-w-5xl px-5 py-12 md:py-16">
-        <a
+        <Link
           href="/upcoming-events"
-          className="inline-flex items-center gap-2 text-sm font-semibold"
+          className="inline-flex items-center gap-2 text-sm font-semibold transition hover:opacity-70"
           style={{ color: dark ? "#b7d9a8" : green }}
         >
           ← Back to Upcoming Events
-        </a>
+        </Link>
 
         {loading ? (
           <div className="py-24 text-center">
-            <p className="text-xl font-semibold">Loading event details...</p>
+            <div
+              className="mx-auto h-10 w-10 animate-spin rounded-full border-4 border-current border-r-transparent"
+              style={{ color: green }}
+            />
+
+            <p className="mt-5 text-xl font-semibold">
+              Loading event details...
+            </p>
           </div>
         ) : error ? (
           <div
-            className="mt-10 rounded-2xl border p-10 text-center"
+            className="mt-10 rounded-2xl border p-6 text-center sm:p-10"
             style={{
               background: surface,
               borderColor: border,
@@ -141,17 +155,17 @@ export default function EventDetails() {
               {error}
             </p>
 
-            <a
+            <Link
               href="/upcoming-events"
-              className="mt-6 inline-block rounded-full px-6 py-3 font-semibold text-white"
+              className="mt-6 inline-block rounded-full px-6 py-3 font-semibold text-white transition hover:opacity-90"
               style={{ background: green }}
             >
               Browse Events
-            </a>
+            </Link>
           </div>
         ) : event ? (
           <article
-            className="mt-8 overflow-hidden rounded-3xl border"
+            className="mt-8 overflow-hidden rounded-3xl border shadow-sm"
             style={{
               background: surface,
               borderColor: border,
@@ -161,11 +175,13 @@ export default function EventDetails() {
             <div
               className="relative h-64 bg-cover bg-center sm:h-96 md:h-112"
               style={{
-                backgroundColor: "#e4e8d8",
-                backgroundImage: event.image ? `url("${event.image}")` : "none",
+                backgroundColor: dark ? "#304638" : "#e4e8d8",
+                backgroundImage: event.image
+                  ? `url("${String(event.image).replace(/["\\]/g, "")}")`
+                  : "none",
               }}
               role="img"
-              aria-label={event.title}
+              aria-label={event.title || "Community event"}
             >
               {!event.image && (
                 <div className="flex h-full items-center justify-center text-7xl">
@@ -193,8 +209,8 @@ export default function EventDetails() {
                 COMMUNITY EVENT
               </p>
 
-              <h1 className="mt-4 text-3xl font-bold leading-tight sm:text-4xl md:text-5xl">
-                {event.title}
+              <h1 className="mt-4 text-3xl leading-tight font-bold sm:text-4xl md:text-5xl">
+                {event.title || "Community Event"}
               </h1>
 
               {/* DATE AND LOCATION */}
@@ -265,21 +281,21 @@ export default function EventDetails() {
 
               {/* ACTION BUTTONS */}
               <div className="mt-10 flex flex-wrap gap-3">
-                <a
+                <Link
                   href="/upcoming-events"
-                  className="rounded-full px-6 py-3.5 font-semibold text-white"
+                  className="rounded-full px-6 py-3.5 font-semibold text-white transition hover:opacity-90"
                   style={{ background: green }}
                 >
                   Explore More Events ↗
-                </a>
+                </Link>
 
-                <a
+                <Link
                   href="/"
-                  className="rounded-full border px-6 py-3.5 font-semibold"
+                  className="rounded-full border px-6 py-3.5 font-semibold transition hover:opacity-75"
                   style={{ borderColor: border }}
                 >
                   Back to Home
-                </a>
+                </Link>
               </div>
             </div>
           </article>
@@ -292,13 +308,13 @@ export default function EventDetails() {
         style={{ borderColor: border }}
       >
         <div className="mx-auto flex max-w-7xl flex-col justify-between gap-4 sm:flex-row sm:items-center">
-          <a
+          <Link
             href="/"
             className="text-xl font-extrabold"
             style={{ color: dark ? "#b7d9a8" : green }}
           >
             kindora.
-          </a>
+          </Link>
 
           <p className="text-sm" style={{ color: muted }}>
             Together, we can make good things happen.

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useToast } from "@/components/ToastProvider";
+import { useTheme } from "@/components/ThemeProvider";
 
 const API_URL = "https://kindora-api-vb9y.onrender.com/api/events";
 
@@ -45,7 +46,9 @@ const emptyForm = {
 export default function Home() {
   const { success, error, warning } = useToast();
 
-  const [dark, setDark] = useState(false);
+  // GLOBAL THEME
+  const { dark, toggleTheme } = useTheme();
+
   const [events, setEvents] = useState([]);
   const [eventsLoading, setEventsLoading] = useState(true);
   const [eventsError, setEventsError] = useState("");
@@ -345,7 +348,7 @@ export default function Home() {
     }
 
     if (!isEventOwner(event)) {
-      error("You can only delete events created by you.");
+      error("You can only delete your own events.");
       return;
     }
 
@@ -453,10 +456,10 @@ export default function Home() {
 
           {/* NAVBAR ACTIONS */}
           <div className="flex shrink-0 items-center gap-2">
-            {/* THEME BUTTON */}
+            {/* GLOBAL THEME BUTTON */}
             <button
               type="button"
-              onClick={() => setDark((previous) => !previous)}
+              onClick={toggleTheme}
               aria-label="Toggle color theme"
               className="flex h-10 w-10 items-center justify-center rounded-full border text-sm"
               style={{ borderColor: border }}

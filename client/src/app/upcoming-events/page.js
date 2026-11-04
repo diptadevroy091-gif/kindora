@@ -3,18 +3,19 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useToast } from "@/components/ToastProvider";
+import { useTheme } from "@/components/ThemeProvider";
 
 const API_URL = "https://kindora-api-vb9y.onrender.com/api/events";
 
 export default function UpcomingEvents() {
   const { error: showError, info, success } = useToast();
+  const { dark, toggleTheme } = useTheme();
 
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [selectedType, setSelectedType] = useState("All");
-  const [dark, setDark] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
 
   const bg = dark ? "#14231c" : "#faf9f5";
@@ -22,8 +23,9 @@ export default function UpcomingEvents() {
   const text = dark ? "#f1f5ed" : "#20392c";
   const muted = dark ? "#b8c8bc" : "#68776c";
   const border = dark ? "#35493c" : "#e6e9df";
-  const green = dark ? "#496f50" : "#315b43";
+  const green = dark ? "#a8d49a" : "#315b43";
 
+  // FETCH EVENTS
   const fetchEvents = useCallback(
     async (showNotification = false) => {
       try {
@@ -60,10 +62,12 @@ export default function UpcomingEvents() {
     [showError, success],
   );
 
+  // INITIAL EVENT LOAD
   useEffect(() => {
     fetchEvents();
   }, [fetchEvents]);
 
+  // EVENT CATEGORIES
   const eventTypes = useMemo(() => {
     const types = events
       .map((event) => event.type)
@@ -72,6 +76,7 @@ export default function UpcomingEvents() {
     return ["All", ...new Set(types)];
   }, [events]);
 
+  // FILTER EVENTS
   const filteredEvents = useMemo(() => {
     const searchText = search.trim().toLowerCase();
 
@@ -92,6 +97,7 @@ export default function UpcomingEvents() {
     });
   }, [events, search, selectedType]);
 
+  // CLEAR FILTERS
   function clearFilters() {
     setSearch("");
     setSelectedType("All");
@@ -100,11 +106,10 @@ export default function UpcomingEvents() {
 
   return (
     <main
-      className="min-h-screen"
+      className="min-h-screen transition-colors duration-300"
       style={{
         background: bg,
         color: text,
-        transition: "background .25s, color .25s",
       }}
     >
       {/* NAVBAR */}
@@ -119,7 +124,7 @@ export default function UpcomingEvents() {
           <Link
             href="/"
             className="shrink-0 text-2xl font-extrabold tracking-tight"
-            style={{ color: dark ? "#b7d9a8" : green }}
+            style={{ color: green }}
             onClick={() => setMenuOpen(false)}
           >
             kindora<span style={{ color: "#d28b54" }}>.</span>
@@ -133,7 +138,7 @@ export default function UpcomingEvents() {
             <Link
               href="/upcoming-events"
               className="font-bold"
-              style={{ color: dark ? "#b7d9a8" : green }}
+              style={{ color: green }}
             >
               Upcoming Events
             </Link>
@@ -144,14 +149,19 @@ export default function UpcomingEvents() {
           </div>
 
           <div className="flex shrink-0 items-center gap-2">
+            {/* GLOBAL THEME BUTTON */}
             <button
               type="button"
-              onClick={() => setDark((current) => !current)}
+              onClick={toggleTheme}
               aria-label={
                 dark ? "Switch to light theme" : "Switch to dark theme"
               }
+              title={dark ? "Light Mode" : "Dark Mode"}
               className="flex h-10 w-10 items-center justify-center rounded-full border transition hover:opacity-75"
-              style={{ borderColor: border }}
+              style={{
+                borderColor: border,
+                background: surface,
+              }}
             >
               {dark ? "☀️" : "🌙"}
             </button>
@@ -159,7 +169,7 @@ export default function UpcomingEvents() {
             <Link
               href="/create-event"
               className="hidden rounded-full px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90 sm:inline-flex"
-              style={{ background: green }}
+              style={{ background: "#52764b" }}
             >
               + Create Event
             </Link>
@@ -168,7 +178,11 @@ export default function UpcomingEvents() {
               type="button"
               onClick={() => setMenuOpen((current) => !current)}
               className="flex h-10 w-10 items-center justify-center rounded-xl border text-xl md:hidden"
-              style={{ borderColor: border }}
+              style={{
+                borderColor: border,
+                background: surface,
+                color: text,
+              }}
               aria-label={
                 menuOpen ? "Close navigation menu" : "Open navigation menu"
               }
@@ -179,16 +193,20 @@ export default function UpcomingEvents() {
           </div>
         </nav>
 
+        {/* MOBILE MENU */}
         {menuOpen && (
           <div
             className="border-t px-4 py-4 md:hidden"
-            style={{ borderColor: border, background: surface }}
+            style={{
+              borderColor: border,
+              background: surface,
+            }}
           >
             <div className="mx-auto flex max-w-7xl flex-col gap-1">
               <Link
                 href="/"
                 onClick={() => setMenuOpen(false)}
-                className="rounded-xl px-4 py-3 text-sm font-medium hover:opacity-75"
+                className="rounded-xl px-4 py-3 text-sm font-medium transition hover:opacity-75"
               >
                 Home
               </Link>
@@ -197,7 +215,7 @@ export default function UpcomingEvents() {
                 href="/upcoming-events"
                 onClick={() => setMenuOpen(false)}
                 className="rounded-xl px-4 py-3 text-sm font-bold"
-                style={{ color: dark ? "#b7d9a8" : green }}
+                style={{ color: green }}
               >
                 Upcoming Events
               </Link>
@@ -205,7 +223,7 @@ export default function UpcomingEvents() {
               <Link
                 href="/#about"
                 onClick={() => setMenuOpen(false)}
-                className="rounded-xl px-4 py-3 text-sm font-medium hover:opacity-75"
+                className="rounded-xl px-4 py-3 text-sm font-medium transition hover:opacity-75"
               >
                 About Us
               </Link>
@@ -214,7 +232,7 @@ export default function UpcomingEvents() {
                 href="/create-event"
                 onClick={() => setMenuOpen(false)}
                 className="mt-2 rounded-xl px-4 py-3 text-center text-sm font-semibold text-white"
-                style={{ background: green }}
+                style={{ background: "#52764b" }}
               >
                 + Create Event
               </Link>
@@ -225,13 +243,18 @@ export default function UpcomingEvents() {
 
       {/* HERO */}
       <section
-        className="px-4 py-14 sm:px-6 sm:py-20 lg:px-8 lg:py-24"
-        style={{ background: dark ? "#192920" : "#f0f2e9" }}
+        className="px-4 py-14 transition-colors duration-300 sm:px-6 sm:py-20 lg:px-8 lg:py-24"
+        style={{
+          background: dark ? "#192920" : "#f0f2e9",
+        }}
       >
         <div className="mx-auto max-w-7xl">
           <div
             className="mb-5 inline-flex items-center gap-2 rounded-full border px-4 py-2 text-xs font-bold"
-            style={{ borderColor: border, color: muted }}
+            style={{
+              borderColor: border,
+              color: muted,
+            }}
           >
             ✳ COMMUNITY STARTS HERE
           </div>
@@ -254,7 +277,7 @@ export default function UpcomingEvents() {
             <a
               href="#event-list"
               className="inline-flex items-center justify-center rounded-full px-6 py-3.5 font-semibold text-white transition hover:opacity-90"
-              style={{ background: green }}
+              style={{ background: "#52764b" }}
             >
               Explore Events ↓
             </a>
@@ -262,7 +285,10 @@ export default function UpcomingEvents() {
             <Link
               href="/create-event"
               className="inline-flex items-center justify-center rounded-full border px-6 py-3.5 font-semibold transition hover:opacity-75"
-              style={{ borderColor: border }}
+              style={{
+                borderColor: border,
+                color: text,
+              }}
             >
               + Create an Event
             </Link>
@@ -279,7 +305,7 @@ export default function UpcomingEvents() {
           <div>
             <p
               className="text-xs font-bold tracking-[.2em]"
-              style={{ color: "#789668" }}
+              style={{ color: dark ? "#a8c99b" : "#789668" }}
             >
               FIND YOUR PURPOSE
             </p>
@@ -297,7 +323,7 @@ export default function UpcomingEvents() {
             className="rounded-full px-4 py-2 text-sm font-semibold"
             style={{
               background: dark ? "#304638" : "#e8efe3",
-              color: dark ? "#c4e2b8" : green,
+              color: dark ? "#c4e2b8" : "#315b43",
             }}
           >
             {events.length} {events.length === 1 ? "Event" : "Events"} Found
@@ -307,7 +333,10 @@ export default function UpcomingEvents() {
         {/* SEARCH & FILTER */}
         <div
           className="mb-8 grid grid-cols-1 gap-4 rounded-2xl border p-4 sm:p-5 md:grid-cols-[1fr_260px]"
-          style={{ background: surface, borderColor: border }}
+          style={{
+            background: surface,
+            borderColor: border,
+          }}
         >
           <div className="min-w-0">
             <label
@@ -368,7 +397,9 @@ export default function UpcomingEvents() {
               style={{ color: green }}
               aria-label="Loading"
             />
+
             <p className="mt-5 text-lg font-semibold">Loading events...</p>
+
             <p className="mt-2 text-sm" style={{ color: muted }}>
               Please wait a moment.
             </p>
@@ -376,7 +407,10 @@ export default function UpcomingEvents() {
         ) : error ? (
           <div
             className="rounded-2xl border p-6 text-center sm:p-10"
-            style={{ background: surface, borderColor: border }}
+            style={{
+              background: surface,
+              borderColor: border,
+            }}
           >
             <p className="text-red-500">{error}</p>
 
@@ -384,7 +418,7 @@ export default function UpcomingEvents() {
               type="button"
               onClick={() => fetchEvents(true)}
               className="mt-5 rounded-full px-6 py-3 font-semibold text-white transition hover:opacity-90"
-              style={{ background: green }}
+              style={{ background: "#52764b" }}
             >
               Try Again
             </button>
@@ -392,7 +426,10 @@ export default function UpcomingEvents() {
         ) : filteredEvents.length === 0 ? (
           <div
             className="rounded-2xl border px-5 py-14 text-center sm:px-6 sm:py-16"
-            style={{ background: surface, borderColor: border }}
+            style={{
+              background: surface,
+              borderColor: border,
+            }}
           >
             <p className="text-5xl" aria-hidden="true">
               🌱
@@ -410,7 +447,7 @@ export default function UpcomingEvents() {
               <Link
                 href="/create-event"
                 className="mt-6 inline-flex rounded-full px-6 py-3 font-semibold text-white"
-                style={{ background: green }}
+                style={{ background: "#52764b" }}
               >
                 + Create an Event
               </Link>
@@ -419,7 +456,10 @@ export default function UpcomingEvents() {
                 type="button"
                 onClick={clearFilters}
                 className="mt-6 rounded-full border px-6 py-3 font-semibold"
-                style={{ borderColor: border }}
+                style={{
+                  borderColor: border,
+                  color: text,
+                }}
               >
                 Clear Filters
               </button>
@@ -437,19 +477,23 @@ export default function UpcomingEvents() {
                   type="button"
                   onClick={clearFilters}
                   className="text-sm font-semibold underline underline-offset-4"
-                  style={{ color: dark ? "#b7d9a8" : green }}
+                  style={{ color: green }}
                 >
                   Clear filters
                 </button>
               )}
             </div>
 
+            {/* EVENT CARDS */}
             <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 sm:gap-6 lg:grid-cols-3">
               {filteredEvents.map((event) => (
                 <article
                   key={event._id}
                   className="group flex min-w-0 flex-col overflow-hidden rounded-2xl border transition duration-300 hover:-translate-y-1 hover:shadow-xl"
-                  style={{ background: surface, borderColor: border }}
+                  style={{
+                    background: surface,
+                    borderColor: border,
+                  }}
                 >
                   {/* IMAGE */}
                   <div
@@ -471,7 +515,10 @@ export default function UpcomingEvents() {
 
                     <span
                       className="absolute left-4 top-4 max-w-[85%] truncate rounded-full px-4 py-2 text-xs font-bold"
-                      style={{ background: surface, color: text }}
+                      style={{
+                        background: surface,
+                        color: text,
+                      }}
                     >
                       {event.type || "Community"}
                     </span>
@@ -489,6 +536,7 @@ export default function UpcomingEvents() {
                     >
                       <p className="flex items-start gap-3">
                         <span aria-hidden="true">📍</span>
+
                         <span className="min-w-0 wrap-break-word">
                           {event.location || "Location not specified"}
                         </span>
@@ -496,6 +544,7 @@ export default function UpcomingEvents() {
 
                       <p className="flex items-start gap-3">
                         <span aria-hidden="true">📅</span>
+
                         <span className="min-w-0 wrap-break-word">
                           {event.date || "Date not specified"}
                         </span>
@@ -521,7 +570,7 @@ export default function UpcomingEvents() {
                       <Link
                         href={`/events/${event._id}`}
                         className="inline-flex w-full items-center justify-center gap-2 rounded-full px-5 py-3 text-sm font-bold text-white transition hover:opacity-90 sm:w-auto"
-                        style={{ background: green }}
+                        style={{ background: "#52764b" }}
                       >
                         View Details <span aria-hidden="true">↗</span>
                       </Link>
@@ -538,7 +587,9 @@ export default function UpcomingEvents() {
       <section className="px-4 pb-14 sm:px-6 sm:pb-20 lg:px-8">
         <div
           className="mx-auto max-w-7xl rounded-3xl px-5 py-12 text-center sm:px-10 sm:py-14 md:px-12"
-          style={{ background: dark ? "#283d30" : "#e8eee0" }}
+          style={{
+            background: dark ? "#283d30" : "#e8eee0",
+          }}
         >
           <p className="text-4xl" aria-hidden="true">
             💚
@@ -559,7 +610,7 @@ export default function UpcomingEvents() {
           <Link
             href="/create-event"
             className="mt-7 inline-flex rounded-full px-7 py-3.5 font-semibold text-white transition hover:opacity-90"
-            style={{ background: green }}
+            style={{ background: "#52764b" }}
           >
             + Create Your Event
           </Link>
@@ -575,7 +626,7 @@ export default function UpcomingEvents() {
           <Link
             href="/"
             className="text-xl font-extrabold"
-            style={{ color: dark ? "#b7d9a8" : green }}
+            style={{ color: green }}
           >
             kindora.
           </Link>

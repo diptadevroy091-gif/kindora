@@ -4,8 +4,11 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/components/ToastProvider";
+import { useTheme } from "@/components/ThemeProvider";
 
-const API_URL = `${process.env.NEXT_PUBLIC_API_URL || "https://kindora-api-vb9y.onrender.com"}/api/events`;
+const API_URL = `${
+  process.env.NEXT_PUBLIC_API_URL || "https://kindora-api-vb9y.onrender.com"
+}/api/events`;
 
 const initialForm = {
   title: "",
@@ -19,11 +22,22 @@ const initialForm = {
 export default function CreateEvent() {
   const router = useRouter();
   const { success, error, warning } = useToast();
+  const { dark, toggleTheme } = useTheme();
 
   const [form, setForm] = useState(initialForm);
   const [loading, setLoading] = useState(false);
   const [checkingAuth, setCheckingAuth] = useState(true);
   const [token, setToken] = useState("");
+
+  // THEME COLORS
+  const bg = dark ? "#14231c" : "#f8f8f5";
+  const surface = dark ? "#1e3027" : "#ffffff";
+  const text = dark ? "#f1f5ed" : "#20251f";
+  const muted = dark ? "#b8c8bc" : "#68776c";
+  const subtle = dark ? "#91a497" : "#89958b";
+  const border = dark ? "#35493c" : "#e5e7eb";
+  const inputBg = dark ? "#14231c" : "#ffffff";
+  const green = dark ? "#a8d49a" : "#52764b";
 
   // ==========================================
   // AUTHENTICATION GUARD
@@ -111,7 +125,6 @@ export default function CreateEvent() {
 
       success("Event created successfully!");
 
-      // Home page will fetch the latest events.
       setTimeout(() => {
         router.push("/");
       }, 900);
@@ -134,13 +147,33 @@ export default function CreateEvent() {
 
   if (checkingAuth) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-[#f8f8f5]">
+      <main
+        className="flex min-h-screen items-center justify-center transition-colors duration-300"
+        style={{ background: bg, color: text }}
+      >
         <div className="text-center">
-          <div className="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-4 border-[#52764b] border-t-transparent" />
-          <p className="text-sm font-medium text-gray-600">
+          <div
+            className="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-4 border-t-transparent"
+            style={{ borderColor: green, borderTopColor: "transparent" }}
+          />
+
+          <p className="text-sm font-medium" style={{ color: muted }}>
             Checking your account...
           </p>
         </div>
+
+        <button
+          type="button"
+          onClick={toggleTheme}
+          aria-label="Toggle theme"
+          className="fixed top-5 right-5 flex h-11 w-11 items-center justify-center rounded-full border shadow-sm"
+          style={{
+            background: surface,
+            borderColor: border,
+          }}
+        >
+          {dark ? "☀️" : "🌙"}
+        </button>
       </main>
     );
   }
@@ -150,41 +183,80 @@ export default function CreateEvent() {
   // ==========================================
 
   return (
-    <main className="min-h-screen bg-[#f8f8f5] text-[#20251f]">
-      {/* Navigation */}
+    <main
+      className="min-h-screen transition-colors duration-300"
+      style={{ background: bg, color: text }}
+    >
+      {/* NAVIGATION */}
 
-      <header className="border-b border-gray-200 bg-white">
+      <header
+        className="border-b transition-colors duration-300"
+        style={{
+          borderColor: border,
+          background: surface,
+        }}
+      >
         <div className="mx-auto flex max-w-7xl items-center justify-between px-5 py-5 sm:px-6">
           <Link
             href="/"
-            className="text-2xl font-bold tracking-tight text-[#52764b]"
+            className="text-2xl font-bold tracking-tight"
+            style={{ color: green }}
           >
-            Kindora
+            Kindora<span className="text-[#d28b54]">.</span>
           </Link>
 
-          <Link
-            href="/"
-            className="rounded-lg px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-100"
-          >
-            ← Home
-          </Link>
+          <div className="flex items-center gap-3">
+            {/* THEME BUTTON */}
+
+            <button
+              type="button"
+              onClick={toggleTheme}
+              aria-label="Toggle theme"
+              title={dark ? "Switch to light mode" : "Switch to dark mode"}
+              className="flex h-10 w-10 items-center justify-center rounded-full border text-lg shadow-sm transition hover:scale-105"
+              style={{
+                background: bg,
+                color: text,
+                borderColor: border,
+              }}
+            >
+              {dark ? "☀️" : "🌙"}
+            </button>
+
+            <Link
+              href="/"
+              className="rounded-lg px-4 py-2 text-sm font-medium transition"
+              style={{
+                color: muted,
+                background: bg,
+              }}
+            >
+              ← Home
+            </Link>
+          </div>
         </div>
       </header>
 
-      {/* Page Content */}
+      {/* PAGE CONTENT */}
 
       <section className="px-4 py-12 sm:px-6 sm:py-16">
         <div className="mx-auto max-w-3xl">
           <Link
             href="/"
-            className="mb-6 inline-flex items-center gap-2 text-sm font-medium text-[#53734f] transition hover:text-[#304b2e]"
+            className="mb-6 inline-flex items-center gap-2 text-sm font-medium transition hover:opacity-75"
+            style={{ color: green }}
           >
             <span aria-hidden="true">←</span>
             Back to Home
           </Link>
 
+          {/* PAGE HEADING */}
+
           <div className="mb-8">
-            <p className="mb-3 text-sm font-semibold uppercase tracking-[0.2em] text-[#66845d]">
+            <p
+              className="mb-3 text-sm font-semibold uppercase tracking-[0.2em]"
+              style={{ color: green }}
+            >
               Make a difference
             </p>
 
@@ -192,17 +264,26 @@ export default function CreateEvent() {
               Create an Event
             </h1>
 
-            <p className="mt-4 max-w-xl text-base leading-7 text-gray-600">
+            <p
+              className="mt-4 max-w-xl text-base leading-7"
+              style={{ color: muted }}
+            >
               Bring people together for a good cause. Share your event with the
               Kindora community.
             </p>
           </div>
 
-          {/* Event Form */}
+          {/* EVENT FORM */}
 
-          <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm sm:p-8">
+          <div
+            className="rounded-2xl border p-5 shadow-sm transition-colors duration-300 sm:p-8"
+            style={{
+              background: surface,
+              borderColor: border,
+            }}
+          >
             <form onSubmit={handleSubmit} className="space-y-6">
-              {/* Event Title */}
+              {/* EVENT TITLE */}
 
               <div>
                 <label
@@ -221,11 +302,16 @@ export default function CreateEvent() {
                   placeholder="e.g. Winter Clothes for Everyone"
                   required
                   maxLength={120}
-                  className="w-full rounded-xl border border-gray-300 px-4 py-3 outline-none transition focus:border-[#64845d] focus:ring-2 focus:ring-[#64845d]/20"
+                  className="w-full rounded-xl border px-4 py-3 outline-none transition focus:border-[#64845d] focus:ring-2 focus:ring-[#64845d]/20"
+                  style={{
+                    background: inputBg,
+                    color: text,
+                    borderColor: border,
+                  }}
                 />
               </div>
 
-              {/* Event Type and Date */}
+              {/* EVENT TYPE AND DATE */}
 
               <div className="grid gap-6 sm:grid-cols-2">
                 <div>
@@ -242,7 +328,12 @@ export default function CreateEvent() {
                     value={form.type}
                     onChange={handleChange}
                     required
-                    className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 outline-none focus:border-[#64845d] focus:ring-2 focus:ring-[#64845d]/20"
+                    className="w-full rounded-xl border px-4 py-3 outline-none transition focus:border-[#64845d] focus:ring-2 focus:ring-[#64845d]/20"
+                    style={{
+                      background: inputBg,
+                      color: text,
+                      borderColor: border,
+                    }}
                   >
                     <option value="Donation">Donation</option>
                     <option value="Volunteering">Volunteering</option>
@@ -268,12 +359,18 @@ export default function CreateEvent() {
                     value={form.date}
                     onChange={handleChange}
                     required
-                    className="w-full rounded-xl border border-gray-300 px-4 py-3 outline-none focus:border-[#64845d] focus:ring-2 focus:ring-[#64845d]/20"
+                    className="w-full rounded-xl border px-4 py-3 outline-none transition focus:border-[#64845d] focus:ring-2 focus:ring-[#64845d]/20"
+                    style={{
+                      background: inputBg,
+                      color: text,
+                      borderColor: border,
+                      colorScheme: dark ? "dark" : "light",
+                    }}
                   />
                 </div>
               </div>
 
-              {/* Location */}
+              {/* LOCATION */}
 
               <div>
                 <label
@@ -292,11 +389,16 @@ export default function CreateEvent() {
                   placeholder="e.g. Mirpur 10, Dhaka"
                   required
                   maxLength={200}
-                  className="w-full rounded-xl border border-gray-300 px-4 py-3 outline-none focus:border-[#64845d] focus:ring-2 focus:ring-[#64845d]/20"
+                  className="w-full rounded-xl border px-4 py-3 outline-none transition focus:border-[#64845d] focus:ring-2 focus:ring-[#64845d]/20"
+                  style={{
+                    background: inputBg,
+                    color: text,
+                    borderColor: border,
+                  }}
                 />
               </div>
 
-              {/* Image URL */}
+              {/* IMAGE URL */}
 
               <div>
                 <label
@@ -313,15 +415,20 @@ export default function CreateEvent() {
                   value={form.image}
                   onChange={handleChange}
                   placeholder="https://example.com/event-image.jpg"
-                  className="w-full rounded-xl border border-gray-300 px-4 py-3 outline-none focus:border-[#64845d] focus:ring-2 focus:ring-[#64845d]/20"
+                  className="w-full rounded-xl border px-4 py-3 outline-none transition focus:border-[#64845d] focus:ring-2 focus:ring-[#64845d]/20"
+                  style={{
+                    background: inputBg,
+                    color: text,
+                    borderColor: border,
+                  }}
                 />
 
-                <p className="mt-2 text-xs leading-5 text-gray-500">
+                <p className="mt-2 text-xs leading-5" style={{ color: subtle }}>
                   Optional. Paste a publicly accessible image URL.
                 </p>
               </div>
 
-              {/* Description */}
+              {/* DESCRIPTION */}
 
               <div>
                 <label
@@ -339,21 +446,27 @@ export default function CreateEvent() {
                   placeholder="Tell people what your event is about..."
                   rows={5}
                   maxLength={2000}
-                  className="w-full resize-y rounded-xl border border-gray-300 px-4 py-3 outline-none focus:border-[#64845d] focus:ring-2 focus:ring-[#64845d]/20"
+                  className="w-full resize-y rounded-xl border px-4 py-3 outline-none transition focus:border-[#64845d] focus:ring-2 focus:ring-[#64845d]/20"
+                  style={{
+                    background: inputBg,
+                    color: text,
+                    borderColor: border,
+                  }}
                 />
               </div>
 
-              {/* Submit Button */}
+              {/* SUBMIT BUTTON */}
 
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full rounded-xl bg-[#52764b] px-6 py-3.5 font-semibold text-white transition hover:bg-[#3f6039] disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+                className="w-full rounded-xl px-6 py-3.5 font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+                style={{ background: "#52764b" }}
               >
                 {loading ? "Creating Event..." : "Create Event →"}
               </button>
 
-              <p className="text-xs text-gray-500">
+              <p className="text-xs" style={{ color: subtle }}>
                 Fields marked with * are required.
               </p>
             </form>
@@ -361,9 +474,16 @@ export default function CreateEvent() {
         </div>
       </section>
 
-      {/* Footer */}
+      {/* FOOTER */}
 
-      <footer className="border-t border-gray-200 bg-white px-4 py-6 text-center text-sm text-gray-500">
+      <footer
+        className="border-t px-4 py-6 text-center text-sm transition-colors duration-300"
+        style={{
+          borderColor: border,
+          background: surface,
+          color: subtle,
+        }}
+      >
         © {new Date().getFullYear()} Kindora. Making a difference together.
       </footer>
     </main>
