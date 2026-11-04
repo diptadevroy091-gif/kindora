@@ -6,7 +6,6 @@ import Link from "next/link";
 const API_BASE =
   process.env.NEXT_PUBLIC_API_URL || "https://kindora-api-vb9y.onrender.com";
 
-// Google logo
 function GoogleLogo() {
   return (
     <svg viewBox="0 0 48 48" aria-hidden="true" className="h-5 w-5 shrink-0">
@@ -30,13 +29,12 @@ function GoogleLogo() {
   );
 }
 
-// GitHub logo
 function GitHubLogo() {
   return (
     <svg
       viewBox="0 0 24 24"
       aria-hidden="true"
-      className="h-5 w-5 shrink-0 fill-current"
+      className="h-5 w-5 shrink-0 fill-current text-[#24292f]"
     >
       <path d="M12 .9a11.1 11.1 0 0 0-3.51 21.63c.55.1.76-.24.76-.54v-2.1c-3.1.68-3.76-1.32-3.76-1.32-.5-1.29-1.24-1.63-1.24-1.63-1.02-.7.08-.69.08-.69 1.12.08 1.71 1.15 1.71 1.15 1 1.7 2.62 1.21 3.26.92.1-.72.39-1.21.71-1.49-2.47-.28-5.07-1.24-5.07-5.5 0-1.22.44-2.21 1.15-2.99-.12-.28-.5-1.42.11-2.95 0 0 .94-.3 3.05 1.14a10.6 10.6 0 0 1 5.55 0c2.11-1.44 3.05-1.14 3.05-1.14.61 1.53.23 2.67.11 2.95.72.78 1.15 1.77 1.15 2.99 0 4.27-2.6 5.22-5.08 5.49.4.35.76 1.02.76 2.06v3.05c0 .3.2.65.77.54A11.1 11.1 0 0 0 12 .9Z" />
     </svg>
@@ -57,11 +55,12 @@ export default function LoginPage() {
   }, []);
 
   function startOAuth(provider) {
-    window.location.href = `${API_BASE}/api/auth/${provider}`;
+    window.location.assign(`${API_BASE}/api/auth/${provider}`);
   }
 
   async function handleLogin(event) {
     event.preventDefault();
+
     setError("");
     setMessage("");
     setLoading(true);
@@ -89,6 +88,7 @@ export default function LoginPage() {
       }
 
       window.dispatchEvent(new Event("kindora-auth-change"));
+
       window.location.href = "/";
     } catch (err) {
       setError(err.message || "Login failed. Please try again.");
@@ -143,7 +143,6 @@ export default function LoginPage() {
   return (
     <main className="flex min-h-screen items-center justify-center bg-gray-50 px-4 py-10">
       <div className="w-full max-w-md rounded-2xl border border-gray-200 bg-white p-8 shadow-sm">
-        {/* Header */}
         <div className="mb-7 text-center">
           <Link href="/" className="text-3xl font-bold text-emerald-700">
             Kindora
@@ -158,7 +157,6 @@ export default function LoginPage() {
           </p>
         </div>
 
-        {/* Error */}
         {error && (
           <div
             role="alert"
@@ -168,7 +166,6 @@ export default function LoginPage() {
           </div>
         )}
 
-        {/* Success message */}
         {message && (
           <div
             role="status"
@@ -178,7 +175,6 @@ export default function LoginPage() {
           </div>
         )}
 
-        {/* Email and password login */}
         <form onSubmit={handleLogin} className="space-y-4">
           <div>
             <label
@@ -229,16 +225,16 @@ export default function LoginPage() {
           </button>
         </form>
 
-        {/* Divider */}
         <div className="my-5 flex items-center gap-3">
           <div className="h-px flex-1 bg-gray-200" />
+
           <span className="text-xs font-medium text-gray-400">
             OR CONTINUE WITH
           </span>
+
           <div className="h-px flex-1 bg-gray-200" />
         </div>
 
-        {/* Social login buttons with logos */}
         <div className="space-y-3">
           <button
             type="button"
@@ -259,7 +255,6 @@ export default function LoginPage() {
           </button>
         </div>
 
-        {/* Google account linking */}
         {token && (
           <div className="mt-7 border-t border-gray-200 pt-5">
             <h2 className="font-semibold text-gray-900">
@@ -277,13 +272,23 @@ export default function LoginPage() {
               className="mt-3 flex w-full items-center justify-center gap-3 rounded-lg border border-emerald-700 bg-white px-4 py-3 font-semibold text-emerald-800 transition hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60"
             >
               <GoogleLogo />
+
               <span>{linking ? "Connecting..." : "Link Google Account"}</span>
             </button>
           </div>
         )}
 
-        {/* Footer */}
         <p className="mt-6 text-center text-sm text-gray-500">
+          Don't have an account?{" "}
+          <Link
+            href="/signup"
+            className="font-semibold text-emerald-700 hover:underline"
+          >
+            Sign up
+          </Link>
+        </p>
+
+        <p className="mt-3 text-center text-sm text-gray-500">
           <Link
             href="/"
             className="font-medium text-emerald-700 hover:underline"
